@@ -84,6 +84,10 @@ export interface IActiveUserSummary {
   points?: number;
   lastActive: Date | string;
   activityType?: string;
+  isActiveToday?: boolean;
+  isActiveWeek?: boolean;
+  isActiveMonth?: boolean;
+  periods?: ('today' | 'week' | 'month' | 'all')[];
 }
 
 export interface IUserActivityStats {
@@ -96,6 +100,10 @@ export interface IUserActivityStats {
   totalReviews: number;
   recentActivities: IUserActivityItem[];
   activeUsersList?: IActiveUserSummary[];
+  activeTodayList?: IActiveUserSummary[];
+  activeWeekList?: IActiveUserSummary[];
+  activeMonthList?: IActiveUserSummary[];
+  allUsersList?: IActiveUserSummary[];
 }
 
 export interface IReportsData {

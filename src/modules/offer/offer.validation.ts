@@ -81,6 +81,7 @@ export const createOfferZodSchema = z.object({
       redemptionRules: z.array(z.string()).optional(),
       buttonLabel: translatableSchema.optional(),
       redemptionDuration: z.number().optional(),
+      redemptionFrequency: z.enum(['daily', 'weekly', 'monthly', 'once', 'custom']).optional(),
       status: z.nativeEnum(OFFER_STATUS).default(OFFER_STATUS.ACTIVE),
       redemptionsCount: z.number().default(0),
     })
@@ -110,6 +111,7 @@ export const updateOfferZodSchema = z.object({
       redemptionRules: z.array(z.string()).optional(),
       buttonLabel: translatableSchema.optional(),
       redemptionDuration: z.number().optional(),
+      redemptionFrequency: z.enum(['daily', 'weekly', 'monthly', 'once', 'custom']).optional(),
       status: z.nativeEnum(OFFER_STATUS).optional(),
       redemptionsCount: z.number().nonnegative().optional(),
     })

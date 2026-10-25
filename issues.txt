@@ -40,23 +40,26 @@ Route Planner:
 
 GENERAL VERSION:
 Dashboard:
---------------------------------------------------------------------------------
 1. On the statistics page, the list of users includes everyone rather than just
    the relevant users (e.g., those active today, or those active over the last 7
    days, etc.).
+   solved
 
 2. On the offers page, the selected settings are not being saved; they have
    reverted multiple times. For example, if I set an offer to be redeemable once per
    week and save it, it resets to "once per day."
+   solved
 
 3. On the map within the "places" page, when editing a location-specifically
    when deleting existing photos and uploading a new one-the deleted photos
    reappear while the page is loading. This appears to be a bug that could cause
    confusion and negatively impact the user experience.
+   solved
 
 4. Add an option to deactivate or reactivate the map for users who had previously
    activated it but later requested a refund or had some other reason for needing
    a change in status.
+   solved
 
 Users:
 --------------------------------------------------------------------------------
