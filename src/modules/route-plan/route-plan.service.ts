@@ -5,15 +5,36 @@ import { IRoutePlan, IRouteStop } from './route-plan.interface'
 import { RoutePlan } from './route-plan.model'
 import { Place } from '../place/place.model'
 import { Business } from '../business/business.model'
+import { User } from '../user/user.model'
+import { Map } from '../map/map.model'
 
 /**
  * Normalizes stops before saving:
  * - Checks whether ID belongs to Place or Business
  * - Preserves existing subdocument _id if present
  * - Ensures valid order index
+ * - Restricts tourist attractions to purchased/free maps for normal users
  */
-const normalizeStops = async (rawStops: any[]): Promise<IRouteStop[]> => {
+const normalizeStops = async (
+  rawStops: any[],
+  userId?: string
+): Promise<IRouteStop[]> => {
   if (!Array.isArray(rawStops)) return []
+
+  let userRole: string | undefined
+  let purchasedMaps: string[] = []
+
+  if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+    const userDoc = await User.findById(userId).select('role purchasedMaps')
+    if (userDoc) {
+      userRole = userDoc.role
+      purchasedMaps = (userDoc.purchasedMaps || []).map((m: any) => m.toString())
+    }
+  }
+
+  const isAdminOrEditor = ['super_admin', 'admin', 'map_editor'].includes(
+    userRole || ''
+  )
 
   const formattedStops: IRouteStop[] = []
 
@@ -30,10 +51,25 @@ const normalizeStops = async (rawStops: any[]): Promise<IRouteStop[]> => {
     let businessId: mongoose.Types.ObjectId | undefined = undefined
 
     // Verify existence in Place or Business collections
-    const placeDoc = await Place.findById(targetId).select('_id type')
+    const placeDoc = await Place.findById(targetId).select('_id type map')
     if (placeDoc) {
       placeId = placeDoc._id
       type = placeDoc.type === 'Business' ? 'Business' : 'Place'
+
+      // Restrict tourist attractions: non-business places require purchased or free map
+      if (type === 'Place' && !isAdminOrEditor) {
+        if (placeDoc.map) {
+          const mapDoc = await Map.findById(placeDoc.map).select('isPaid')
+          const isPaid = mapDoc ? mapDoc.isPaid !== false : true
+          const hasPurchased = purchasedMaps.includes(placeDoc.map.toString())
+          if (isPaid && !hasPurchased) {
+            throw new ApiError(
+              StatusCodes.FORBIDDEN,
+              'Restricted tourist attraction. You must purchase the corresponding map to add this place to your route plan.'
+            )
+          }
+        }
+      }
     } else {
       const businessDoc = await Business.findById(targetId).select('_id')
       if (businessDoc) {
@@ -100,7 +136,7 @@ const createRoutePlan = async (
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid User ID')
   }
 
-  const stops = payload.stops ? await normalizeStops(payload.stops) : []
+  const stops = payload.stops ? await normalizeStops(payload.stops, userId) : []
 
   const newRoute = await RoutePlan.create({
     user: new mongoose.Types.ObjectId(userId),
@@ -229,7 +265,7 @@ const updateRoutePlan = async (
     updateFields.description = payload.description
   if (payload.isPublic !== undefined) updateFields.isPublic = payload.isPublic
   if (payload.stops !== undefined) {
-    updateFields.stops = await normalizeStops(payload.stops)
+    updateFields.stops = await normalizeStops(payload.stops, userId)
   }
 
   const updated = await populateRoutePlan(
@@ -301,15 +337,18 @@ const addStop = async (
     throw new ApiError(StatusCodes.NOT_FOUND, 'Route plan not found')
   }
 
-  const normalized = await normalizeStops([
-    {
-      ...stopData,
-      order:
-        typeof stopData.order === 'number'
-          ? stopData.order
-          : routePlan.stops.length + 1,
-    },
-  ])
+  const normalized = await normalizeStops(
+    [
+      {
+        ...stopData,
+        order:
+          typeof stopData.order === 'number'
+            ? stopData.order
+            : routePlan.stops.length + 1,
+      },
+    ],
+    userId
+  )
 
   if (!normalized.length) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid place ID')

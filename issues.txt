@@ -92,6 +92,7 @@ Users:
 Users who have not purchased the map:
 1. Locked pins should not display the name of the location; currently. the names
    are visible.
+   solved
 
 2. When new locations are added, users without an account should receive a
    notification, but without the location name being revealed (e.g., "A new
@@ -99,6 +100,7 @@ Users who have not purchased the map:
 
 3. Restrict tourist attractions within the route planner; currently, all
    locations are visible, which may allow users to access paid/premium information.
+   solved
 
 
 MOBILE VERSION:

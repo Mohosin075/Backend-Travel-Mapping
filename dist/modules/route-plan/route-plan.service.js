@@ -10,15 +10,28 @@ const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const route_plan_model_1 = require("./route-plan.model");
 const place_model_1 = require("../place/place.model");
 const business_model_1 = require("../business/business.model");
+const user_model_1 = require("../user/user.model");
+const map_model_1 = require("../map/map.model");
 /**
  * Normalizes stops before saving:
  * - Checks whether ID belongs to Place or Business
  * - Preserves existing subdocument _id if present
  * - Ensures valid order index
+ * - Restricts tourist attractions to purchased/free maps for normal users
  */
-const normalizeStops = async (rawStops) => {
+const normalizeStops = async (rawStops, userId) => {
     if (!Array.isArray(rawStops))
         return [];
+    let userRole;
+    let purchasedMaps = [];
+    if (userId && mongoose_1.default.Types.ObjectId.isValid(userId)) {
+        const userDoc = await user_model_1.User.findById(userId).select('role purchasedMaps');
+        if (userDoc) {
+            userRole = userDoc.role;
+            purchasedMaps = (userDoc.purchasedMaps || []).map((m) => m.toString());
+        }
+    }
+    const isAdminOrEditor = ['super_admin', 'admin', 'map_editor'].includes(userRole || '');
     const formattedStops = [];
     for (let index = 0; index < rawStops.length; index++) {
         const item = rawStops[index];
@@ -30,10 +43,21 @@ const normalizeStops = async (rawStops) => {
         let placeId = undefined;
         let businessId = undefined;
         // Verify existence in Place or Business collections
-        const placeDoc = await place_model_1.Place.findById(targetId).select('_id type');
+        const placeDoc = await place_model_1.Place.findById(targetId).select('_id type map');
         if (placeDoc) {
             placeId = placeDoc._id;
             type = placeDoc.type === 'Business' ? 'Business' : 'Place';
+            // Restrict tourist attractions: non-business places require purchased or free map
+            if (type === 'Place' && !isAdminOrEditor) {
+                if (placeDoc.map) {
+                    const mapDoc = await map_model_1.Map.findById(placeDoc.map).select('isPaid');
+                    const isPaid = mapDoc ? mapDoc.isPaid !== false : true;
+                    const hasPurchased = purchasedMaps.includes(placeDoc.map.toString());
+                    if (isPaid && !hasPurchased) {
+                        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'Restricted tourist attraction. You must purchase the corresponding map to add this place to your route plan.');
+                    }
+                }
+            }
         }
         else {
             const businessDoc = await business_model_1.Business.findById(targetId).select('_id');
@@ -87,7 +111,7 @@ const createRoutePlan = async (userId, payload) => {
     if (!userId || !mongoose_1.default.Types.ObjectId.isValid(userId)) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid User ID');
     }
-    const stops = payload.stops ? await normalizeStops(payload.stops) : [];
+    const stops = payload.stops ? await normalizeStops(payload.stops, userId) : [];
     const newRoute = await route_plan_model_1.RoutePlan.create({
         user: new mongoose_1.default.Types.ObjectId(userId),
         name: payload.name || 'Mi Roadtrip',
@@ -172,7 +196,7 @@ const updateRoutePlan = async (id, userId, payload) => {
     if (payload.isPublic !== undefined)
         updateFields.isPublic = payload.isPublic;
     if (payload.stops !== undefined) {
-        updateFields.stops = await normalizeStops(payload.stops);
+        updateFields.stops = await normalizeStops(payload.stops, userId);
     }
     const updated = await populateRoutePlan(route_plan_model_1.RoutePlan.findByIdAndUpdate(id, { $set: updateFields }, { new: true }));
     if (updated && Array.isArray(updated.stops)) {
@@ -218,7 +242,7 @@ const addStop = async (id, userId, stopData) => {
                 ? stopData.order
                 : routePlan.stops.length + 1,
         },
-    ]);
+    ], userId);
     if (!normalized.length) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid place ID');
     }

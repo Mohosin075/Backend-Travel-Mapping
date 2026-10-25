@@ -180,6 +180,7 @@ const verifyCheckoutSession = async (sessionId) => {
  * Used by flutter_stripe SDK for native mobile payments
  */
 const createPaymentIntent = async (user, payload) => {
+    var _a;
     try {
         // Same as checkout: charge Map.price server-side (never trust client amount)
         const map = await map_model_1.Map.findById(payload.mapId);
@@ -194,11 +195,12 @@ const createPaymentIntent = async (user, payload) => {
         }
         const amount = map.price;
         const currency = (payload.currency || 'eur').toLowerCase();
+        const resolvedUserId = (_a = (user.authId || user.id || user._id)) === null || _a === void 0 ? void 0 : _a.toString();
         const paymentIntent = await stripe_1.default.paymentIntents.create({
             amount: Math.round(amount * 100), // Convert to cents
             currency,
             metadata: {
-                userId: user.authId.toString(),
+                userId: resolvedUserId,
                 userEmail: user.email,
                 mapId: payload.mapId.toString(),
                 ...payload.metadata,
@@ -206,7 +208,7 @@ const createPaymentIntent = async (user, payload) => {
         });
         // Create payment record
         await payment_model_1.Payment.create({
-            userId: user.authId,
+            userId: user.authId || user.id || user._id,
             mapId: payload.mapId,
             userEmail: user.email,
             amount,
@@ -215,7 +217,7 @@ const createPaymentIntent = async (user, payload) => {
             paymentIntentId: paymentIntent.id,
             status: 'pending',
             metadata: {
-                userId: user.authId.toString(),
+                userId: resolvedUserId,
                 mapId: payload.mapId.toString(),
                 ...payload.metadata,
             },
@@ -269,6 +271,7 @@ const createEphemeralKey = async (user, apiVersion = '2025-05-28.basil') => {
  * Processes payment_intent.succeeded events from Stripe
  */
 const handlePaymentIntentWebhook = async (paymentIntent) => {
+    var _a;
     try {
         const payment = await payment_model_1.Payment.findOne({
             paymentIntentId: paymentIntent.id,
@@ -292,6 +295,11 @@ const handlePaymentIntentWebhook = async (paymentIntent) => {
                 processedAt: new Date().toISOString(),
             };
             await payment.save({ session });
+            // Update User purchasedMaps if mapId exists
+            const mapId = payment.mapId || ((_a = paymentIntent.metadata) === null || _a === void 0 ? void 0 : _a.mapId);
+            if (mapId) {
+                await user_model_1.User.findByIdAndUpdate(payment.userId, { $addToSet: { purchasedMaps: mapId } }, { session });
+            }
             await session.commitTransaction();
             console.log(`Payment processed successfully: ${paymentIntent.id}`);
         }

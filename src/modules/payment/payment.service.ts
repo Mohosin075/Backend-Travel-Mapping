@@ -250,12 +250,13 @@ const createPaymentIntent = async (
 
     const amount = map.price
     const currency = (payload.currency || 'eur').toLowerCase()
+    const resolvedUserId = (user.authId || user.id || user._id)?.toString()
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Convert to cents
       currency,
       metadata: {
-        userId: user.authId.toString(),
+        userId: resolvedUserId,
         userEmail: user.email,
         mapId: payload.mapId.toString(),
         ...payload.metadata,
@@ -264,7 +265,7 @@ const createPaymentIntent = async (
 
     // Create payment record
     await Payment.create({
-      userId: user.authId,
+      userId: user.authId || user.id || user._id,
       mapId: payload.mapId,
       userEmail: user.email,
       amount,
@@ -273,7 +274,7 @@ const createPaymentIntent = async (
       paymentIntentId: paymentIntent.id,
       status: 'pending',
       metadata: {
-        userId: user.authId.toString(),
+        userId: resolvedUserId,
         mapId: payload.mapId.toString(),
         ...payload.metadata,
       },
@@ -372,6 +373,16 @@ const handlePaymentIntentWebhook = async (
         processedAt: new Date().toISOString(),
       }
       await payment.save({ session })
+
+      // Update User purchasedMaps if mapId exists
+      const mapId = payment.mapId || paymentIntent.metadata?.mapId
+      if (mapId) {
+        await User.findByIdAndUpdate(
+          payment.userId,
+          { $addToSet: { purchasedMaps: mapId } },
+          { session }
+        )
+      }
 
       await session.commitTransaction()
       console.log(`Payment processed successfully: ${paymentIntent.id}`)
