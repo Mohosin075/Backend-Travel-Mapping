@@ -13,23 +13,29 @@ NEW FEATURES: FIXES
 Notifications:
 1. When a review of mine is approved, the red notification dot does not appear,
    even though I do receive a notification stating that my review has been approved.
+   solved
 
 Route Planner:
 1. Remove the "view place" button, leaving only the "get directions" button.
+   solved
 
 2. Remove the text displaying the category, as the information currently appears
    too cluttered.
+   solved
 
 3. In the mobile version, the information elements are stacked on top of each
    other, which looks poor both visually and aesthetically. Please display only
    the photo, the name of the place, the address, and the "get directions" button.
+   solved
 
 4. On the map used for adding locations to a route, the icons were enlarged, but
    the borders were also increased in size. I meant for only the icon *inside* the
    border to be enlarged, while keeping the border itself the same size as before.
    Apologies if my previous explanation caused any confusion.
+   solved
 
 5. Remove the text that reads "View protected against accidental changes."
+   solved
 
 
 GENERAL VERSION:

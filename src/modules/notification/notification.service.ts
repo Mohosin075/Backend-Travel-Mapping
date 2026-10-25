@@ -83,13 +83,15 @@ const createNotification = async (
       metadata: payload.metadata || {},
       actionUrl: payload.actionUrl,
       actionText: payload.actionText,
+      isRead: false,
+      isArchived: false,
+      status: payload.scheduledAt ? NotificationStatus.PENDING : NotificationStatus.SENT,
       readBy: [],
       archivedBy: [],
     }
 
     if (payload.scheduledAt) {
       notificationData.scheduledAt = payload.scheduledAt
-      notificationData.status = NotificationStatus.PENDING
     }
 
     const notification = await Notification.create(notificationData)
@@ -583,8 +585,8 @@ const getUnreadCount = async (userId: string): Promise<IUnreadCountResponse> => 
     $or: [
       {
         userId: userObjectId,
-        isRead: false,
-        isArchived: false,
+        isRead: { $ne: true },
+        isArchived: { $ne: true },
       },
       {
         userId: { $exists: false },
