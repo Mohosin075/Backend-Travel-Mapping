@@ -190,6 +190,17 @@ const assignEditorAccess = (0, catchAsync_1.default)(async (req, res) => {
         data: result,
     });
 });
+const updateUserMapAccess = (0, catchAsync_1.default)(async (req, res) => {
+    const { userId } = req.params;
+    const { mapId, action } = req.body;
+    const result = await user_service_1.UserServices.updateUserMapAccess(userId, mapId, action, req.user);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_codes_1.StatusCodes.OK,
+        success: true,
+        message: result.message,
+        data: result.user,
+    });
+});
 exports.UserController = {
     updateProfile,
     getAllUsers,
@@ -207,4 +218,5 @@ exports.UserController = {
     toggleFavoriteOffer,
     getFavoriteOffers,
     assignEditorAccess,
+    updateUserMapAccess,
 };

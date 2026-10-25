@@ -26,20 +26,11 @@ const getMyAwards = async (userId) => {
     for (const config of configs) {
         const found = existingAwards.find(a => (a.configId && a.configId.toString() === config._id.toString()) ||
             (a.type === config.type && a.target === config.target));
-        let progress = 0;
-        let isUnlocked = false;
-        if (config.type === 'PDF Itinerary' ||
-            config.type === 'Free Map' ||
-            config.type === 'Gourmet Guide' ||
-            config.type === 'Exclusive Discount' ||
-            config.type === 'Permanent Discount') {
-            progress = user.points || 0;
-            isUnlocked = progress >= config.target;
-        }
-        else if (found) {
-            progress = found.progress;
-            isUnlocked = found.progress >= config.target;
-        }
+        const userPoints = Number(user.points) || 0;
+        // Every reward and badge tracks user points against the target requirement set by admin in dashboard.
+        // If the award has a custom action progress (e.g. approved reviews), we take the highest progress.
+        const progress = Math.max(userPoints, (found === null || found === void 0 ? void 0 : found.progress) || 0);
+        const isUnlocked = progress >= config.target;
         if (!found) {
             const newAward = await award_model_1.Award.create({
                 userId,
@@ -50,9 +41,12 @@ const getMyAwards = async (userId) => {
                 isUnlocked,
             });
             if (isUnlocked) {
+                const rewardTitle = typeof config.title === 'object'
+                    ? config.title.en || config.title.es || config.type
+                    : config.title || config.type;
                 notification_integration_1.NotificationIntegration.onRewardEarned({
                     userId,
-                    rewardTitle: config.type,
+                    rewardTitle,
                     rewardType: config.type,
                     awardId: newAward._id,
                 }).catch(err => console.error('Failed to notify award earned:', err));
@@ -65,22 +59,19 @@ const getMyAwards = async (userId) => {
         else {
             // Update target, progress, isUnlocked if they differ
             const wasUnlocked = Boolean(found.isUnlocked);
-            const updates = { configId: config._id, target: config.target };
-            if (config.type === 'PDF Itinerary' ||
-                config.type === 'Free Map' ||
-                config.type === 'Gourmet Guide' ||
-                config.type === 'Exclusive Discount' ||
-                config.type === 'Permanent Discount') {
-                updates.progress = progress;
-                updates.isUnlocked = isUnlocked;
-            }
-            else {
-                updates.isUnlocked = found.progress >= config.target;
-            }
+            const updates = {
+                configId: config._id,
+                target: config.target,
+                progress,
+                isUnlocked,
+            };
             if (!wasUnlocked && updates.isUnlocked) {
+                const rewardTitle = typeof config.title === 'object'
+                    ? config.title.en || config.title.es || config.type
+                    : config.title || config.type;
                 notification_integration_1.NotificationIntegration.onRewardEarned({
                     userId,
-                    rewardTitle: config.type,
+                    rewardTitle,
                     rewardType: config.type,
                     awardId: found._id,
                 }).catch(err => console.error('Failed to notify award earned:', err));
@@ -94,12 +85,15 @@ const getMyAwards = async (userId) => {
     return awards.sort((a, b) => (a.target || 0) - (b.target || 0));
 };
 const updateAwardProgress = async (userId, type, progressIncrement) => {
-    const award = await award_model_1.Award.findOne({ userId, type });
-    if (award) {
+    const user = await user_model_1.User.findById(userId).select('points');
+    const userPoints = Number(user === null || user === void 0 ? void 0 : user.points) || 0;
+    const awards = await award_model_1.Award.find({ userId, type });
+    for (const award of awards) {
         const wasUnlocked = Boolean(award.isUnlocked);
-        const newProgress = Math.min(award.progress + progressIncrement, award.target);
+        const actionProgress = (award.progress || 0) + progressIncrement;
+        const newProgress = Math.max(userPoints, actionProgress);
         const isUnlocked = newProgress >= award.target;
-        await award_model_1.Award.updateOne({ userId, type }, { $set: { progress: newProgress, isUnlocked } });
+        await award_model_1.Award.updateOne({ _id: award._id }, { $set: { progress: newProgress, isUnlocked } });
         if (!wasUnlocked && isUnlocked) {
             notification_integration_1.NotificationIntegration.onRewardEarned({
                 userId,

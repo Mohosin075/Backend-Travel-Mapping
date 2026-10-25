@@ -67,23 +67,27 @@ Users:
    those for supermarkets, gas stations, malls, and any other places registered
    on Google Maps-are visible. Other options. such as satellite view, light mode,
    etc., display correctly.
+   solved
 
 2. On the landing page, within the offers section, the official images for each
    business/offer are not appearing: instead, photos of tourist attractions are
-   shown in place of the actual restaurant images.
+   shown in place of the actual restaurant images. - later
 
 3. I created a new badge reward worth 200 XP, but it did not unlock upon reaching
    the required points; furthermore, my current point total is not being tracked.
    However, when I changed the reward type to a PDF, a free map, etc., it worked
    as expected. How do badges work?
+   solved
 
 4. The levels displayed in the PROFILE section are not linked to the levels
    defined in the dashboard.
+   solved
 
 5. On the locations page, visited places should be highlighted with a subtle
    border-matching the color of the border used for "visited" pins-without being
    overly prominent. This is simply to help the user visually identify which places
    they have already visited.
+   solved
 
 Users who have not purchased the map:
 1. Locked pins should not display the name of the location; currently. the names

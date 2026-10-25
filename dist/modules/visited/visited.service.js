@@ -11,7 +11,9 @@ const visited_model_1 = require("./visited.model");
 const place_model_1 = require("../place/place.model");
 const business_model_1 = require("../business/business.model");
 const user_model_1 = require("../user/user.model");
+const levelConfig_service_1 = require("../award/levelConfig.service");
 const toggleVisited = async (userId, payload) => {
+    var _a, _b;
     const targetId = payload.placeId || payload.place || payload.business || payload.id;
     if (!targetId || !mongoose_1.default.Types.ObjectId.isValid(targetId)) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'A valid location ID is required');
@@ -43,8 +45,18 @@ const toggleVisited = async (userId, payload) => {
         if (existing) {
             // Unmark visited
             await visited_model_1.Visited.findByIdAndDelete(existing._id).session(session);
+            if (existing.type === 'Business' || existing.business) {
+                const bId = existing.business || targetId;
+                await business_model_1.Business.findByIdAndUpdate(bId, { $inc: { viewCount: -1 } }, { session });
+            }
+            const pointsToDeduct = Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) > 0 ? Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) : 10;
+            const userDoc = await user_model_1.User.findById(userId).session(session);
+            const currentPoints = Number(userDoc === null || userDoc === void 0 ? void 0 : userDoc.points) || 0;
+            const newPoints = Math.max(0, currentPoints - pointsToDeduct);
+            const levelInfo = await levelConfig_service_1.LevelConfigServices.getDynamicUserLevel(newPoints, (userDoc === null || userDoc === void 0 ? void 0 : userDoc.totalReviewsApproved) || 0);
             const updatedUser = await user_model_1.User.findByIdAndUpdate(userId, {
                 $pull: { visitedPlaces: targetId },
+                $set: { points: newPoints, level: levelInfo.levelNumber },
             }, { new: true, session });
             // Sync count based on actual length
             const actualCount = (updatedUser === null || updatedUser === void 0 ? void 0 : updatedUser.visitedPlaces) ? updatedUser.visitedPlaces.length : 0;
@@ -62,8 +74,34 @@ const toggleVisited = async (userId, payload) => {
                     visitedAt: new Date(),
                 },
             ], { session });
+            if (locationType === 'Business') {
+                await business_model_1.Business.findByIdAndUpdate(targetId, { $inc: { viewCount: 1 } }, { session });
+            }
+            else if (isPlaceExist) {
+                const placeName = (typeof isPlaceExist.name === 'object'
+                    ? ((_a = isPlaceExist.name) === null || _a === void 0 ? void 0 : _a.es) || ((_b = isPlaceExist.name) === null || _b === void 0 ? void 0 : _b.en)
+                    : isPlaceExist.name) || isPlaceExist.name_es || '';
+                if (placeName) {
+                    const matchingBiz = await business_model_1.Business.findOne({
+                        $or: [
+                            { name: placeName },
+                            { 'name.en': placeName },
+                            { 'name.es': placeName },
+                        ],
+                    }).session(session);
+                    if (matchingBiz) {
+                        await business_model_1.Business.findByIdAndUpdate(matchingBiz._id, { $inc: { viewCount: 1 } }, { session });
+                    }
+                }
+            }
+            const pointsToAdd = Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) > 0 ? Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) : 10;
+            const userDoc = await user_model_1.User.findById(userId).session(session);
+            const currentPoints = Number(userDoc === null || userDoc === void 0 ? void 0 : userDoc.points) || 0;
+            const newPoints = currentPoints + pointsToAdd;
+            const levelInfo = await levelConfig_service_1.LevelConfigServices.getDynamicUserLevel(newPoints, (userDoc === null || userDoc === void 0 ? void 0 : userDoc.totalReviewsApproved) || 0);
             const updatedUser = await user_model_1.User.findByIdAndUpdate(userId, {
                 $addToSet: { visitedPlaces: targetId },
+                $set: { points: newPoints, level: levelInfo.levelNumber },
             }, { new: true, session });
             const actualCount = (updatedUser === null || updatedUser === void 0 ? void 0 : updatedUser.visitedPlaces) ? updatedUser.visitedPlaces.length : 1;
             await user_model_1.User.findByIdAndUpdate(userId, { $set: { visitedPlacesCount: actualCount } }, { session });
@@ -178,6 +216,14 @@ const getMyVisitedPlaces = async (userId, query) => {
             },
         },
         { $unwind: { path: '$business', preserveNullAndEmptyArrays: true } },
+        {
+            $match: {
+                $or: [
+                    { place: { $exists: true, $ne: null } },
+                    { business: { $exists: true, $ne: null } },
+                ],
+            },
+        },
     ];
     // Optional search by name or address across place/business
     if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim()) {
@@ -196,13 +242,17 @@ const getMyVisitedPlaces = async (userId, query) => {
             },
         });
     }
+    const limitNum = Number(limit);
+    const dataPipeline = [{ $sort: { [sortField]: sortOrder } }];
+    if (skip > 0) {
+        dataPipeline.push({ $skip: skip });
+    }
+    if (limitNum > 0) {
+        dataPipeline.push({ $limit: limitNum });
+    }
     pipeline.push({
         $facet: {
-            data: [
-                { $sort: { [sortField]: sortOrder } },
-                { $skip: skip },
-                { $limit: Number(limit) },
-            ],
+            data: dataPipeline,
             totalCount: [{ $count: 'count' }],
         },
     });
@@ -213,11 +263,11 @@ const getMyVisitedPlaces = async (userId, query) => {
         isVisited: true,
     }));
     const total = ((_c = (_b = aggregateResult[0]) === null || _b === void 0 ? void 0 : _b.totalCount[0]) === null || _c === void 0 ? void 0 : _c.count) || 0;
-    const totalPage = Math.ceil(total / Number(limit));
+    const totalPage = limitNum > 0 ? Math.ceil(total / limitNum) : 1;
     return {
         meta: {
             total,
-            limit: Number(limit),
+            limit: limitNum > 0 ? limitNum : total,
             page: Number(page),
             totalPage,
         },
@@ -225,12 +275,43 @@ const getMyVisitedPlaces = async (userId, query) => {
     };
 };
 const getVisitedCount = async (userId) => {
-    var _a, _b;
+    var _a;
     const user = await user_model_1.User.findById(userId).select('visitedPlacesCount visitedPlaces');
     if (!user) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'User not found');
     }
-    const count = (_a = user.visitedPlacesCount) !== null && _a !== void 0 ? _a : (((_b = user.visitedPlaces) === null || _b === void 0 ? void 0 : _b.length) || 0);
+    const validCountAggregate = await visited_model_1.Visited.aggregate([
+        { $match: { user: new mongoose_1.default.Types.ObjectId(userId) } },
+        {
+            $lookup: {
+                from: 'places',
+                localField: 'place',
+                foreignField: '_id',
+                as: 'p',
+            },
+        },
+        {
+            $lookup: {
+                from: 'businesses',
+                localField: 'business',
+                foreignField: '_id',
+                as: 'b',
+            },
+        },
+        {
+            $match: {
+                $or: [
+                    { 'p.0': { $exists: true } },
+                    { 'b.0': { $exists: true } },
+                ],
+            },
+        },
+        { $count: 'count' },
+    ]);
+    const count = ((_a = validCountAggregate[0]) === null || _a === void 0 ? void 0 : _a.count) || 0;
+    if (user.visitedPlacesCount !== count) {
+        await user_model_1.User.findByIdAndUpdate(userId, { $set: { visitedPlacesCount: count } });
+    }
     return { visitedPlacesCount: count };
 };
 const removeVisited = async (id, userId) => {

@@ -22,7 +22,7 @@ const award_model_1 = require("../award/award.model");
 require("../award/awardConfig.model");
 const levelConfig_service_1 = require("../award/levelConfig.service");
 const visited_model_1 = require("../visited/visited.model");
-require("../map/map.model");
+const map_model_1 = require("../map/map.model");
 const place_model_1 = require("../place/place.model");
 require("../business/business.model");
 require("../offer/offer.model");
@@ -213,6 +213,7 @@ const getUserById = async (userId) => {
     })
         .select('-password -authentication -__v')
         .populate('purchasedMaps', 'name country images coverPhoto price description')
+        .populate('deactivatedMaps', 'name country images coverPhoto price description')
         .populate('favoriteMaps', 'name country images')
         .populate('assignedMaps', 'name country')
         .populate('redeemedFreeMap', 'name country')
@@ -730,6 +731,54 @@ const assignEditorAccess = async (userId, assignedMaps, assignedCountries) => {
     const updatedUser = await user_model_1.User.findByIdAndUpdate(userId, { $set: updateData }, { new: true, runValidators: true });
     return updatedUser;
 };
+const updateUserMapAccess = async (userId, mapId, action, actor) => {
+    if (!mongoose_1.Types.ObjectId.isValid(userId)) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid User ID.');
+    }
+    if (!mongoose_1.Types.ObjectId.isValid(mapId)) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid Map ID.');
+    }
+    const user = await user_model_1.User.findOne({
+        _id: userId,
+        status: { $nin: [user_1.USER_STATUS.DELETED] },
+    });
+    if (!user) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'User not found.');
+    }
+    const map = await map_model_1.Map.findById(mapId);
+    if (!map) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Map not found.');
+    }
+    const mapObjectId = new mongoose_1.Types.ObjectId(mapId);
+    let updateDoc = {};
+    let message = '';
+    if (action === 'deactivate' || action === 'remove') {
+        // Remove from purchasedMaps, add to deactivatedMaps
+        updateDoc = {
+            $pull: { purchasedMaps: mapObjectId },
+            $addToSet: { deactivatedMaps: mapObjectId },
+        };
+        message = 'Map access deactivated successfully.';
+    }
+    else if (action === 'reactivate' || action === 'grant') {
+        // Add to purchasedMaps, remove from deactivatedMaps
+        updateDoc = {
+            $addToSet: { purchasedMaps: mapObjectId },
+            $pull: { deactivatedMaps: mapObjectId },
+        };
+        message = 'Map access activated successfully.';
+    }
+    const updatedUser = await user_model_1.User.findByIdAndUpdate(userId, updateDoc, {
+        new: true,
+    })
+        .select('-password -authentication -__v')
+        .populate('purchasedMaps', 'name country images coverPhoto price description')
+        .populate('deactivatedMaps', 'name country images coverPhoto price description');
+    if (!updatedUser) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Failed to update map access.');
+    }
+    return { message, user: updatedUser };
+};
 exports.UserServices = {
     updateProfile,
     createAdmin,
@@ -749,4 +798,5 @@ exports.UserServices = {
     getFavoriteOffers,
     updatePointsAndLevel,
     assignEditorAccess,
+    updateUserMapAccess,
 };

@@ -22,6 +22,8 @@ router.get('/favorite-offers', (0, auth_1.default)(user_1.USER_ROLES.USER, user_
 router.patch('/profile', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.USER, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.MAP_EDITOR), (0, processReqBody_1.fileAndBodyProcessorUsingDiskStorage)(), (0, validateRequest_1.default)(user_validation_1.updateUserSchema), user_controller_1.UserController.updateProfile);
 router.post('/invite', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(user_validation_1.inviteUserSchema), user_controller_1.UserController.inviteUser);
 router.patch('/update-role/:userId', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(user_validation_1.updateUserRoleSchema), user_controller_1.UserController.updateUserRole);
+router.patch('/assign-editor-access/:userId', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(user_validation_1.assignEditorAccessZodSchema), user_controller_1.UserController.assignEditorAccess);
+router.patch('/map-access/:userId', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(user_validation_1.updateUserMapAccessSchema), user_controller_1.UserController.updateUserMapAccess);
 router.delete('/profile', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.USER, user_1.USER_ROLES.MAP_EDITOR), user_controller_1.UserController.deleteProfile);
 router
     .route('/')
@@ -33,5 +35,4 @@ router
     .patch((0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), 
 // validateRequest(updateUserSchema),
 user_controller_1.UserController.updateUserStatus);
-router.patch('/assign-editor-access/:userId', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(user_validation_1.assignEditorAccessZodSchema), user_controller_1.UserController.assignEditorAccess);
 exports.UserRoutes = router;

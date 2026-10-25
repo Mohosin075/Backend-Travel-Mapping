@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BusinessService = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
+const place_model_1 = require("../place/place.model");
 const http_status_codes_1 = require("http-status-codes");
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const business_model_1 = require("./business.model");
@@ -177,15 +179,63 @@ const getMyBusinesses = async (userId, query) => {
                 offersByBusiness.set(bId, []);
             offersByBusiness.get(bId).push(off);
         }
-        // Get views and visits for each business
+        // Get views and visits for each business (including any matching places with same name)
+        const businessNames = [];
+        for (const b of result) {
+            if (typeof b.name === 'object') {
+                if (b.name.en)
+                    businessNames.push(b.name.en);
+                if (b.name.es)
+                    businessNames.push(b.name.es);
+            }
+            else if (typeof b.name === 'string' && b.name.trim()) {
+                businessNames.push(b.name.trim());
+            }
+        }
+        const linkedPlaces = businessNames.length > 0
+            ? await place_model_1.Place.find({
+                $or: [
+                    { name: { $in: businessNames } },
+                    { 'name.en': { $in: businessNames } },
+                    { 'name.es': { $in: businessNames } },
+                ],
+            })
+                .select('_id name')
+                .lean()
+            : [];
+        const linkedPlaceIds = linkedPlaces.map((p) => p._id);
+        const linkedPlaceIdStrings = linkedPlaceIds.map(String);
+        // Map place ID to business ID
+        const placeIdToBusinessId = new Map();
+        for (const p of linkedPlaces) {
+            const pName = (typeof p.name === 'object' ? `${p.name.en || ''} ${p.name.es || ''}` : p.name || '').toLowerCase().trim();
+            for (const b of result) {
+                const bName = (typeof b.name === 'object' ? `${b.name.en || ''} ${b.name.es || ''}` : b.name || '').toLowerCase().trim();
+                if (pName && bName && (pName.includes(bName) || bName.includes(pName))) {
+                    placeIdToBusinessId.set(String(p._id), String(b._id));
+                }
+            }
+        }
         const viewsByBusiness = new Map();
         const visitedByBusiness = new Map();
+        const allEntityIds = [...businessIds.map(String), ...linkedPlaceIdStrings];
         const viewMatch = {
-            type: 'business',
-            entityId: { $in: businessIds.map(String) },
+            $or: [
+                { type: 'business', entityId: { $in: businessIds.map(String) } },
+                { entityId: { $in: allEntityIds } },
+            ],
         };
         if (dateRange)
             viewMatch.lastSeenAt = dateRange;
+        const visitedMatch = {
+            $or: [
+                { type: 'Business', business: { $in: businessIds } },
+                { business: { $in: businessIds } },
+                ...(linkedPlaceIds.length > 0 ? [{ place: { $in: linkedPlaceIds } }] : []),
+            ],
+        };
+        if (dateRange)
+            visitedMatch.visitedAt = dateRange;
         const [viewAgg, visitedAgg] = await Promise.all([
             usageView_model_1.UsageView.aggregate([
                 { $match: viewMatch },
@@ -197,26 +247,24 @@ const getMyBusinesses = async (userId, query) => {
                 },
             ]),
             visited_model_1.Visited.aggregate([
-                {
-                    $match: {
-                        type: 'Business',
-                        business: { $in: businessIds },
-                        ...(dateRange ? { visitedAt: dateRange } : {}),
-                    },
-                },
+                { $match: visitedMatch },
                 {
                     $group: {
-                        _id: '$business',
+                        _id: { $ifNull: ['$business', '$place'] },
                         count: { $sum: 1 },
                     },
                 },
             ]),
         ]);
         for (const item of viewAgg) {
-            viewsByBusiness.set(String(item._id), item.count);
+            const idStr = String(item._id);
+            const mappedBizId = placeIdToBusinessId.get(idStr) || idStr;
+            viewsByBusiness.set(mappedBizId, (viewsByBusiness.get(mappedBizId) || 0) + item.count);
         }
         for (const item of visitedAgg) {
-            visitedByBusiness.set(String(item._id), item.count);
+            const idStr = String(item._id);
+            const mappedBizId = placeIdToBusinessId.get(idStr) || idStr;
+            visitedByBusiness.set(mappedBizId, (visitedByBusiness.get(mappedBizId) || 0) + item.count);
         }
         // Get redemptions for all offers
         const offerIds = offers.map((o) => o._id);
@@ -425,10 +473,39 @@ const getBusinessStats = async (businessId, timeFilter) => {
             totalOfferRedemptions = redemptionsCount;
         }
     }
-    // Views and visits from UsageView and Visited
+    // Views and visits from UsageView and Visited (including any duplicate or linked Place entries)
+    const businessName = typeof business.name === 'object'
+        ? business.name.en || business.name.es || ''
+        : business.name || '';
+    const matchingPlace = businessName
+        ? await place_model_1.Place.findOne({
+            $or: [
+                { name: businessName },
+                { 'name.en': businessName },
+                { 'name.es': businessName },
+            ],
+        })
+            .select('_id')
+            .lean()
+        : null;
+    const targetIds = [businessId];
+    if (matchingPlace) {
+        targetIds.push(String(matchingPlace._id));
+    }
     let viewCount = 0;
-    const viewQuery = { type: 'business', entityId: businessId };
-    const visitedQuery = { type: 'Business', business: businessId };
+    const viewQuery = {
+        $or: [
+            { type: 'business', entityId: businessId },
+            { entityId: { $in: targetIds } },
+        ],
+    };
+    const visitedQuery = {
+        $or: [
+            { business: businessId },
+            { type: 'Business', business: businessId },
+            ...(matchingPlace ? [{ place: matchingPlace._id }] : []),
+        ],
+    };
     if (dateRange) {
         viewQuery.lastSeenAt = dateRange;
         visitedQuery.visitedAt = dateRange;
@@ -453,8 +530,19 @@ const getBusinessStats = async (businessId, timeFilter) => {
         timeFilter: timeFilter || 'all_time',
     };
 };
-const incrementViewCount = async (id) => {
-    return await business_model_1.Business.findByIdAndUpdate(id, { $inc: { viewCount: 1 } }, { new: true });
+const incrementViewCount = async (id, userId) => {
+    if (!mongoose_1.default.Types.ObjectId.isValid(id))
+        return null;
+    const business = await business_model_1.Business.findByIdAndUpdate(id, { $inc: { viewCount: 1 } }, { new: true });
+    if (userId) {
+        try {
+            await usageView_model_1.UsageView.findOneAndUpdate({ viewerKey: `user:${userId}`, type: 'business', entityId: String(id) }, { $set: { lastSeenAt: new Date() } }, { upsert: true });
+        }
+        catch (_a) {
+            // Ignore unique index collision
+        }
+    }
+    return business;
 };
 exports.BusinessService = {
     createBusiness,

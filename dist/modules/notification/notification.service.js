@@ -70,12 +70,14 @@ const createNotification = async (payload, sendEmail = false) => {
             metadata: payload.metadata || {},
             actionUrl: payload.actionUrl,
             actionText: payload.actionText,
+            isRead: false,
+            isArchived: false,
+            status: payload.scheduledAt ? notification_interface_1.NotificationStatus.PENDING : notification_interface_1.NotificationStatus.SENT,
             readBy: [],
             archivedBy: [],
         };
         if (payload.scheduledAt) {
             notificationData.scheduledAt = payload.scheduledAt;
-            notificationData.status = notification_interface_1.NotificationStatus.PENDING;
         }
         const notification = await notification_model_1.Notification.create(notificationData);
         // Send real-time notification via socket
@@ -446,8 +448,8 @@ const getUnreadCount = async (userId) => {
         $or: [
             {
                 userId: userObjectId,
-                isRead: false,
-                isArchived: false,
+                isRead: { $ne: true },
+                isArchived: { $ne: true },
             },
             {
                 userId: { $exists: false },

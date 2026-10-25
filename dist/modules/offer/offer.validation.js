@@ -77,6 +77,7 @@ exports.createOfferZodSchema = zod_1.z.object({
         redemptionRules: zod_1.z.array(zod_1.z.string()).optional(),
         buttonLabel: translatableSchema.optional(),
         redemptionDuration: zod_1.z.number().optional(),
+        redemptionFrequency: zod_1.z.enum(['daily', 'weekly', 'monthly', 'once', 'custom']).optional(),
         status: zod_1.z.nativeEnum(offer_1.OFFER_STATUS).default(offer_1.OFFER_STATUS.ACTIVE),
         redemptionsCount: zod_1.z.number().default(0),
     })
@@ -105,6 +106,7 @@ exports.updateOfferZodSchema = zod_1.z.object({
         redemptionRules: zod_1.z.array(zod_1.z.string()).optional(),
         buttonLabel: translatableSchema.optional(),
         redemptionDuration: zod_1.z.number().optional(),
+        redemptionFrequency: zod_1.z.enum(['daily', 'weekly', 'monthly', 'once', 'custom']).optional(),
         status: zod_1.z.nativeEnum(offer_1.OFFER_STATUS).optional(),
         redemptionsCount: zod_1.z.number().nonnegative().optional(),
     })

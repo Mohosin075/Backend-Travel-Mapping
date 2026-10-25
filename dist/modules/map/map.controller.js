@@ -142,13 +142,28 @@ const getDiscoveryData = (0, catchAsync_1.default)(async (req, res) => {
     const isAdminOrEditor = !!(user && (user.role === 'super_admin' || user.role === 'admin' || user.role === 'map_editor'));
     const result = await map_service_1.MapService.getDiscoveryData(req.query, lockedMapIds, isAdminOrEditor, targetMap);
     const visitedSet = new Set(((user === null || user === void 0 ? void 0 : user.visitedPlaces) || []).map((id) => id.toString()));
+    const isGuest = !user;
+    const now = Date.now();
+    const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
     const itemsWithVisited = Array.isArray(result)
         ? result.map((item) => {
             var _a;
-            return ({
+            const isNewlyAdded = Boolean(item.createdAt && (now - new Date(item.createdAt).getTime() <= sixtyDaysMs));
+            const isLocked = Boolean(item.isLocked);
+            // For users without an account, hide the name of newly added locked locations (Issue 2)
+            let maskedName = item.name;
+            if (isGuest && isNewlyAdded && isLocked) {
+                maskedName = {
+                    en: 'A location was added to the map...',
+                    es: 'Se agregó una ubicación al mapa...',
+                };
+            }
+            return {
                 ...item,
+                name: maskedName,
+                isNewlyAdded,
                 isVisited: visitedSet.has((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()),
-            });
+            };
         })
         : result;
     const discoveryFields = ['name', 'description', 'access', 'entryCost', 'hikeTime', 'atmosphere', 'accessibility.notes', 'recommendations.tips', 'category.name'];

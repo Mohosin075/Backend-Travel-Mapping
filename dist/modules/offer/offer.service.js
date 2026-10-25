@@ -616,9 +616,9 @@ const redeemOffer = async (id, userId, authHeader) => {
     if (activeRedemption) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'You already have an active redemption for this offer');
     }
-    // Active session for staff verification: default 15 mins (or offer.redemptionDuration if <= 120 mins)
-    const durationInMinutes = offer.redemptionDuration && offer.redemptionDuration > 0 && offer.redemptionDuration <= 120
-        ? offer.redemptionDuration
+    // Active session countdown timer for customer to show staff (configured by admin on offer, default 15 mins)
+    const durationInMinutes = Number(offer.redemptionDuration) && Number(offer.redemptionDuration) > 0
+        ? Number(offer.redemptionDuration)
         : 15;
     const expiresAt = new Date(Date.now() + durationInMinutes * 60 * 1000);
     const redemption = await offerRedemption_model_1.OfferRedemption.create({

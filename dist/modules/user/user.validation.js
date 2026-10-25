@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignEditorAccessZodSchema = exports.favoriteOfferSchema = exports.favoritePlaceSchema = exports.favoriteMapSchema = exports.addUserInterestSchema = exports.updateUserRoleSchema = exports.inviteUserSchema = exports.createStaffSchema = exports.STAFF_SPECIALTY = exports.updateUserSchema = void 0;
+exports.updateUserMapAccessSchema = exports.assignEditorAccessZodSchema = exports.favoriteOfferSchema = exports.favoritePlaceSchema = exports.favoriteMapSchema = exports.addUserInterestSchema = exports.updateUserRoleSchema = exports.inviteUserSchema = exports.createStaffSchema = exports.STAFF_SPECIALTY = exports.updateUserSchema = void 0;
 const zod_1 = require("zod");
 const user_1 = require("../../enum/user");
 // ------------------ SUB-SCHEMAS ------------------
@@ -168,5 +168,20 @@ exports.assignEditorAccessZodSchema = zod_1.z.object({
                 path: ['assignedMaps'],
             });
         }
+    }),
+});
+exports.updateUserMapAccessSchema = zod_1.z.object({
+    params: zod_1.z.object({
+        userId: zod_1.z.string({
+            required_error: 'User ID is required',
+        }),
+    }),
+    body: zod_1.z.object({
+        mapId: zod_1.z.string({
+            required_error: 'Map ID is required',
+        }),
+        action: zod_1.z.enum(['deactivate', 'reactivate', 'grant', 'remove'], {
+            required_error: 'Action is required (deactivate, reactivate, grant, or remove)',
+        }),
     }),
 });

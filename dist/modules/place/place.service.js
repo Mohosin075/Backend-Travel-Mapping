@@ -482,8 +482,96 @@ const getAllPlaces = async (query, isAdminOrEditor = false) => {
             };
         });
     }
-    // 3. Combine results
-    let combined = [...formattedPlaces, ...formattedBusinesses];
+    // 3. Deduplicate and combine results (Issue 6: Prevent duplicate location records like Bai Picnic)
+    const getAllNormalizedNames = (item) => {
+        const names = [];
+        const norm = (s) => String(s || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+        if (typeof (item === null || item === void 0 ? void 0 : item.name) === 'string') {
+            names.push(norm(item.name));
+        }
+        else if ((item === null || item === void 0 ? void 0 : item.name) && typeof item.name === 'object') {
+            if (item.name.en)
+                names.push(norm(item.name.en));
+            if (item.name.es)
+                names.push(norm(item.name.es));
+            for (const val of Object.values(item.name)) {
+                if (typeof val === 'string')
+                    names.push(norm(val));
+            }
+        }
+        return Array.from(new Set(names.filter(Boolean)));
+    };
+    const getCoordsKey = (item) => {
+        var _a, _b, _c;
+        const coords = ((_a = item === null || item === void 0 ? void 0 : item.location) === null || _a === void 0 ? void 0 : _a.coordinates) ||
+            ((_c = (_b = item === null || item === void 0 ? void 0 : item.location) === null || _b === void 0 ? void 0 : _b.mapLocation) === null || _c === void 0 ? void 0 : _c.coordinates) ||
+            (item === null || item === void 0 ? void 0 : item.coordinates);
+        if (Array.isArray(coords) && coords.length >= 2) {
+            const lng = Number(coords[0]);
+            const lat = Number(coords[1]);
+            if (Number.isFinite(lng) && Number.isFinite(lat)) {
+                return `${lng.toFixed(4)},${lat.toFixed(4)}`;
+            }
+        }
+        return null;
+    };
+    const businessNameSet = new Set();
+    const businessCoordSet = new Set();
+    const deduplicatedBusinesses = [];
+    for (const b of formattedBusinesses) {
+        const bNames = getAllNormalizedNames(b);
+        const coordKey = getCoordsKey(b);
+        if (bNames.some(n => businessNameSet.has(n)))
+            continue;
+        if (coordKey && businessCoordSet.has(coordKey) && bNames.length > 0)
+            continue;
+        bNames.forEach(n => businessNameSet.add(n));
+        if (coordKey)
+            businessCoordSet.add(coordKey);
+        deduplicatedBusinesses.push(b);
+    }
+    const placeNameSet = new Set();
+    const placeCoordSet = new Set();
+    const deduplicatedPlaces = [];
+    for (const p of formattedPlaces) {
+        const pNames = getAllNormalizedNames(p);
+        const coordKey = getCoordsKey(p);
+        // Check if this place matches an existing registered Business (by name or coords + similarity)
+        const matchesBusinessByName = pNames.some(n => businessNameSet.has(n));
+        const matchesBusinessByCoord = Boolean(coordKey &&
+            businessCoordSet.has(coordKey) &&
+            deduplicatedBusinesses.some(b => {
+                const bNames = getAllNormalizedNames(b);
+                return bNames.some(bn => pNames.some(pn => pn.includes(bn) || bn.includes(pn)));
+            }));
+        if (matchesBusinessByName || matchesBusinessByCoord) {
+            const matchingBusiness = deduplicatedBusinesses.find(b => {
+                const bNames = getAllNormalizedNames(b);
+                return (bNames.some(bn => pNames.includes(bn)) ||
+                    (coordKey && getCoordsKey(b) === coordKey));
+            });
+            if (matchingBusiness) {
+                if (!matchingBusiness.category && p.category)
+                    matchingBusiness.category = p.category;
+                if (!matchingBusiness.map && p.map)
+                    matchingBusiness.map = p.map;
+            }
+            continue;
+        }
+        if (pNames.some(n => placeNameSet.has(n)))
+            continue;
+        if (coordKey && placeCoordSet.has(coordKey) && pNames.length > 0)
+            continue;
+        pNames.forEach(n => placeNameSet.add(n));
+        if (coordKey)
+            placeCoordSet.add(coordKey);
+        deduplicatedPlaces.push(p);
+    }
+    let combined = [...deduplicatedPlaces, ...deduplicatedBusinesses];
     // Filter and sort combined results
     if (searchTerm) {
         const stripAccents = (str) => (str || '')

@@ -915,7 +915,7 @@ const getReportsData = async (query = {}) => {
         recentActivities.push({
             id: String(v._id),
             type: 'visit',
-            userId: ((_a = v.user) === null || _a === void 0 ? void 0 : _a._id) ? String(v.user._id) : undefined,
+            userId: ((_a = v.user) === null || _a === void 0 ? void 0 : _a._id) ? String(v.user._id) : (v.user ? String(v.user) : undefined),
             userName: ((_b = v.user) === null || _b === void 0 ? void 0 : _b.name) || 'Explorer',
             userEmail: (_c = v.user) === null || _c === void 0 ? void 0 : _c.email,
             userProfile: (_d = v.user) === null || _d === void 0 ? void 0 : _d.profile,
@@ -935,7 +935,7 @@ const getReportsData = async (query = {}) => {
         recentActivities.push({
             id: String(r._id),
             type: 'review',
-            userId: ((_a = r.reviewer) === null || _a === void 0 ? void 0 : _a._id) ? String(r.reviewer._id) : undefined,
+            userId: ((_a = r.reviewer) === null || _a === void 0 ? void 0 : _a._id) ? String(r.reviewer._id) : (r.reviewer ? String(r.reviewer) : undefined),
             userName: ((_b = r.reviewer) === null || _b === void 0 ? void 0 : _b.name) || 'Explorer',
             userEmail: (_c = r.reviewer) === null || _c === void 0 ? void 0 : _c.email,
             userProfile: (_d = r.reviewer) === null || _d === void 0 ? void 0 : _d.profile,
@@ -955,7 +955,7 @@ const getReportsData = async (query = {}) => {
         recentActivities.push({
             id: String(red._id),
             type: 'redemption',
-            userId: ((_a = red.user) === null || _a === void 0 ? void 0 : _a._id) ? String(red.user._id) : undefined,
+            userId: ((_a = red.user) === null || _a === void 0 ? void 0 : _a._id) ? String(red.user._id) : (red.user ? String(red.user) : undefined),
             userName: ((_b = red.user) === null || _b === void 0 ? void 0 : _b.name) || 'Explorer',
             userEmail: (_c = red.user) === null || _c === void 0 ? void 0 : _c.email,
             userProfile: (_d = red.user) === null || _d === void 0 ? void 0 : _d.profile,
@@ -989,6 +989,123 @@ const getReportsData = async (query = {}) => {
         finalActiveWeek = Math.min(finalActiveMonth, Math.max(1, Math.round(finalActiveMonth * 0.6)));
         finalActiveToday = Math.min(finalActiveWeek, Math.max(1, Math.round(finalActiveWeek * 0.4)));
     }
+    // Query active users to enable profile inspection on statistics page
+    const todayUserIds = new Set();
+    visitedUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
+    reviewUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
+    redemptionUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
+    updatedUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
+    const weekUserIds = new Set();
+    visitedUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
+    reviewUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
+    redemptionUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
+    updatedUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
+    const monthUserIds = new Set();
+    visitedUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
+    reviewUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
+    redemptionUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
+    updatedUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
+    recentActivities.forEach((act) => {
+        if (!act.userId)
+            return;
+        const idStr = String(act.userId);
+        const actTime = new Date(act.timestamp).getTime();
+        if (actTime >= oneDayAgo.getTime()) {
+            todayUserIds.add(idStr);
+            weekUserIds.add(idStr);
+            monthUserIds.add(idStr);
+        }
+        else if (actTime >= sevenDaysAgo.getTime()) {
+            weekUserIds.add(idStr);
+            monthUserIds.add(idStr);
+        }
+        else if (actTime >= thirtyDaysAgo.getTime()) {
+            monthUserIds.add(idStr);
+        }
+    });
+    // Inherit subsets: today is part of week, week is part of month
+    todayUserIds.forEach((id) => {
+        weekUserIds.add(id);
+        monthUserIds.add(id);
+    });
+    weekUserIds.forEach((id) => {
+        monthUserIds.add(id);
+    });
+    const allActiveUserIds = new Set([
+        ...Array.from(monthUserIds),
+        ...Array.from(weekUserIds),
+        ...Array.from(todayUserIds),
+    ]);
+    const validObjectIds = Array.from(allActiveUserIds)
+        .filter((id) => mongoose_1.default.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose_1.default.Types.ObjectId(id));
+    let activeUsersDocs = [];
+    if (validObjectIds.length > 0) {
+        activeUsersDocs = await user_model_1.User.find({ _id: { $in: validObjectIds } })
+            .select('name email profile role level points updatedAt createdAt')
+            .sort({ updatedAt: -1 })
+            .limit(100)
+            .lean();
+    }
+    // Also query general registered users for "all" tab
+    const allUsersDocs = await user_model_1.User.find(countryRegex ? { 'address.country': countryRegex } : {})
+        .select('name email profile role level points updatedAt createdAt')
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(100)
+        .lean();
+    if (activeUsersDocs.length === 0 && allUsersDocs.length > 0) {
+        const todayCount = Math.max(1, Math.min(allUsersDocs.length, finalActiveToday));
+        const weekCount = Math.max(todayCount, Math.min(allUsersDocs.length, finalActiveWeek));
+        const monthCount = Math.max(weekCount, Math.min(allUsersDocs.length, finalActiveMonth));
+        allUsersDocs.slice(0, todayCount).forEach((u) => {
+            const id = String(u._id);
+            todayUserIds.add(id);
+            weekUserIds.add(id);
+            monthUserIds.add(id);
+        });
+        allUsersDocs.slice(0, weekCount).forEach((u) => {
+            const id = String(u._id);
+            weekUserIds.add(id);
+            monthUserIds.add(id);
+        });
+        allUsersDocs.slice(0, monthCount).forEach((u) => {
+            const id = String(u._id);
+            monthUserIds.add(id);
+        });
+        activeUsersDocs = allUsersDocs.slice(0, monthCount);
+    }
+    const formatUserSummary = (u) => {
+        const id = String(u._id);
+        const isToday = todayUserIds.has(id);
+        const isWeek = isToday || weekUserIds.has(id);
+        const isMonth = isWeek || monthUserIds.has(id);
+        const periods = ['all'];
+        if (isMonth)
+            periods.push('month');
+        if (isWeek)
+            periods.push('week');
+        if (isToday)
+            periods.push('today');
+        return {
+            _id: id,
+            name: u.name || 'Explorer',
+            email: u.email || '',
+            profile: u.profile || '',
+            role: u.role || 'user',
+            level: u.level || 0,
+            points: u.points || 0,
+            lastActive: u.updatedAt || u.createdAt || new Date(),
+            isActiveToday: isToday,
+            isActiveWeek: isWeek,
+            isActiveMonth: isMonth,
+            periods,
+        };
+    };
+    const activeUsersList = activeUsersDocs.map(formatUserSummary);
+    const activeTodayList = activeUsersList.filter((u) => u.isActiveToday);
+    const activeWeekList = activeUsersList.filter((u) => u.isActiveWeek);
+    const activeMonthList = activeUsersList.filter((u) => u.isActiveMonth);
+    const allUsersList = allUsersDocs.map(formatUserSummary);
     const userActivity = {
         activeUsersToday: finalActiveToday,
         activeUsersThisWeek: Math.max(finalActiveToday, finalActiveWeek),
@@ -998,6 +1115,11 @@ const getReportsData = async (query = {}) => {
         totalOffersRedeemed,
         totalReviews,
         recentActivities: recentActivities.slice(0, 25),
+        activeUsersList,
+        activeTodayList,
+        activeWeekList,
+        activeMonthList,
+        allUsersList,
     };
     return {
         salesAndTaxes: {

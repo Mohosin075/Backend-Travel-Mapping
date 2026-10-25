@@ -5,6 +5,7 @@ import { Visited } from './visited.model'
 import { Place } from '../place/place.model'
 import { Business } from '../business/business.model'
 import { User } from '../user/user.model'
+import { LevelConfigServices } from '../award/levelConfig.service'
 
 interface IToggleVisitedPayload {
   placeId?: string
@@ -63,10 +64,20 @@ const toggleVisited = async (
         )
       }
 
+      const pointsToDeduct = Number(isPlaceExist?.pointsAwarded) > 0 ? Number(isPlaceExist?.pointsAwarded) : 10
+      const userDoc = await User.findById(userId).session(session)
+      const currentPoints = Number(userDoc?.points) || 0
+      const newPoints = Math.max(0, currentPoints - pointsToDeduct)
+      const levelInfo = await LevelConfigServices.getDynamicUserLevel(
+        newPoints,
+        userDoc?.totalReviewsApproved || 0
+      )
+
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         {
           $pull: { visitedPlaces: targetId },
+          $set: { points: newPoints, level: levelInfo.levelNumber },
         },
         { new: true, session }
       )
@@ -124,10 +135,20 @@ const toggleVisited = async (
         }
       }
 
+      const pointsToAdd = Number(isPlaceExist?.pointsAwarded) > 0 ? Number(isPlaceExist?.pointsAwarded) : 10
+      const userDoc = await User.findById(userId).session(session)
+      const currentPoints = Number(userDoc?.points) || 0
+      const newPoints = currentPoints + pointsToAdd
+      const levelInfo = await LevelConfigServices.getDynamicUserLevel(
+        newPoints,
+        userDoc?.totalReviewsApproved || 0
+      )
+
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         {
           $addToSet: { visitedPlaces: targetId },
+          $set: { points: newPoints, level: levelInfo.levelNumber },
         },
         { new: true, session }
       )

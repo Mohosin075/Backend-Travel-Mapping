@@ -419,6 +419,13 @@ const refundPayment = async (id, reason) => {
             refundReason: reason,
             metadata: { ...payment.metadata, refundId: refund.id },
         }, { new: true, runValidators: true }).populate('userId', 'name email');
+        // Automatically remove user map access upon refund
+        if (payment.userId && payment.mapId) {
+            await user_model_1.User.findByIdAndUpdate(payment.userId, {
+                $pull: { purchasedMaps: payment.mapId },
+                $addToSet: { deactivatedMaps: payment.mapId },
+            });
+        }
         return result;
     }
     catch (error) {

@@ -110,6 +110,12 @@ const UserSchema = new mongoose_1.Schema({
             ref: 'Map',
         },
     ],
+    deactivatedMaps: [
+        {
+            type: mongoose_1.Schema.Types.ObjectId,
+            ref: 'Map',
+        },
+    ],
     // --- Points & Rewards ---
     points: { type: Number, default: 0 },
     level: { type: Number, default: 0 }, // starts at level 0: Explorador

@@ -355,8 +355,8 @@ const approveReview = async (id) => {
                 }
             }
         }
-        // Points earned is 0 if user hasn't purchased the map
-        const points = isMapPurchased ? potentialPoints : 0;
+        // Award the full calculated points upon admin approval (1pt rating, +4pts text, +5pts 200+ chars)
+        const points = potentialPoints;
         // Update review status
         const updatedReview = await review_model_1.Review.findByIdAndUpdate(id, { $set: { status: 'Approved', isVerified: true, pointsEarned: points } }, { session, new: true });
         // 3. Update user points, approved review count, and recalculate level

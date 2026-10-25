@@ -69,9 +69,19 @@ if (process.env.NODE_ENV !== 'production') {
     app.use((0, morgan_1.default)('dev'));
 }
 // -------------------- Static Files --------------------
-app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
-app.use('/images', express_1.default.static(path_1.default.join(process.cwd(), 'uploads/images')));
-app.use('/media', express_1.default.static(path_1.default.join(process.cwd(), 'uploads/media')));
+const staticImageOptions = {
+    maxAge: '30d',
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        if (/\.(jpg|jpeg|png|webp|avif|gif|svg)$/i.test(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+        }
+    },
+};
+app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads'), staticImageOptions));
+app.use('/images', express_1.default.static(path_1.default.join(process.cwd(), 'uploads/images'), staticImageOptions));
+app.use('/media', express_1.default.static(path_1.default.join(process.cwd(), 'uploads/media'), staticImageOptions));
 app.use('/documents', express_1.default.static(path_1.default.join(process.cwd(), 'uploads/documents')));
 // -------------------- API Routes --------------------
 app.get('/', (req, res) => {

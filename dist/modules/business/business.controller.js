@@ -120,8 +120,12 @@ const getBusinessStats = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const incrementViewCount = (0, catchAsync_1.default)(async (req, res) => {
+    var _a, _b, _c;
     const { id } = req.params;
-    const result = await business_service_1.BusinessService.incrementViewCount(id);
+    const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a._id) ||
+        ((_b = req.user) === null || _b === void 0 ? void 0 : _b.id) ||
+        ((_c = req.user) === null || _c === void 0 ? void 0 : _c.authId);
+    const result = await business_service_1.BusinessService.incrementViewCount(id, userId ? String(userId) : undefined);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,

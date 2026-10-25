@@ -224,6 +224,40 @@ const handlePaymentFailure = async (paymentIntent) => {
         mongoSession.endSession();
     }
 };
+const handleChargeRefunded = async (charge) => {
+    var _a, _b, _c, _d;
+    try {
+        const paymentIntentId = typeof charge.payment_intent === 'string'
+            ? charge.payment_intent
+            : (_a = charge.payment_intent) === null || _a === void 0 ? void 0 : _a.id;
+        if (!paymentIntentId)
+            return;
+        const payment = await payment_model_1.Payment.findOne({
+            $or: [
+                { paymentIntentId },
+                { 'metadata.paymentIntentId': paymentIntentId },
+            ],
+        });
+        if (payment) {
+            payment.status = 'refunded';
+            payment.refundAmount = charge.amount_refunded
+                ? charge.amount_refunded / 100
+                : payment.amount;
+            payment.refundReason =
+                ((_d = (_c = (_b = charge.refunds) === null || _b === void 0 ? void 0 : _b.data) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.reason) || 'refunded_via_stripe';
+            await payment.save();
+            if (payment.userId && payment.mapId) {
+                await user_model_1.User.findByIdAndUpdate(payment.userId, {
+                    $pull: { purchasedMaps: payment.mapId },
+                    $addToSet: { deactivatedMaps: payment.mapId },
+                });
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error handling charge.refunded webhook:', error);
+    }
+};
 exports.WebhookService = {
     handleWebhook: async (payload) => {
         console.log('🔔 Processing Checkout Session Completed:', payload);
@@ -258,6 +292,9 @@ exports.WebhookService = {
                     break;
                 case 'payment_intent.payment_failed':
                     await handlePaymentFailure(event.data.object);
+                    break;
+                case 'charge.refunded':
+                    await handleChargeRefunded(event.data.object);
                     break;
                 default:
                     console.log(`Unhandled event type: ${event.type}`);
