@@ -23,7 +23,7 @@ import { Award } from '../award/award.model'
 import '../award/awardConfig.model'
 import { LevelConfigServices } from '../award/levelConfig.service'
 import { Visited } from '../visited/visited.model'
-import '../map/map.model'
+import { Map } from '../map/map.model'
 import { Place } from '../place/place.model'
 import '../business/business.model'
 import '../offer/offer.model'
@@ -273,6 +273,7 @@ const getUserById = async (userId: string): Promise<any> => {
   })
     .select('-password -authentication -__v')
     .populate('purchasedMaps', 'name country images coverPhoto price description')
+    .populate('deactivatedMaps', 'name country images coverPhoto price description')
     .populate('favoriteMaps', 'name country images')
     .populate('assignedMaps', 'name country')
     .populate('redeemedFreeMap', 'name country')
@@ -987,6 +988,66 @@ const assignEditorAccess = async (
   return updatedUser
 }
 
+const updateUserMapAccess = async (
+  userId: string,
+  mapId: string,
+  action: 'deactivate' | 'reactivate' | 'grant' | 'remove',
+  actor?: JwtPayload,
+) => {
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid User ID.')
+  }
+  if (!Types.ObjectId.isValid(mapId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid Map ID.')
+  }
+
+  const user = await User.findOne({
+    _id: userId,
+    status: { $nin: [USER_STATUS.DELETED] },
+  })
+  if (!user) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'User not found.')
+  }
+
+  const map = await Map.findById(mapId)
+  if (!map) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Map not found.')
+  }
+
+  const mapObjectId = new Types.ObjectId(mapId)
+  let updateDoc: any = {}
+  let message = ''
+
+  if (action === 'deactivate' || action === 'remove') {
+    // Remove from purchasedMaps, add to deactivatedMaps
+    updateDoc = {
+      $pull: { purchasedMaps: mapObjectId },
+      $addToSet: { deactivatedMaps: mapObjectId },
+    }
+    message = 'Map access deactivated successfully.'
+  } else if (action === 'reactivate' || action === 'grant') {
+    // Add to purchasedMaps, remove from deactivatedMaps
+    updateDoc = {
+      $addToSet: { purchasedMaps: mapObjectId },
+      $pull: { deactivatedMaps: mapObjectId },
+    }
+    message = 'Map access activated successfully.'
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(userId, updateDoc, {
+    new: true,
+  })
+    .select('-password -authentication -__v')
+    .populate('purchasedMaps', 'name country images coverPhoto price description')
+    .populate('deactivatedMaps', 'name country images coverPhoto price description')
+
+  if (!updatedUser) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Failed to update map access.')
+  }
+
+  return { message, user: updatedUser }
+}
+
 export const UserServices = {
   updateProfile,
   createAdmin,
@@ -1006,4 +1067,5 @@ export const UserServices = {
   getFavoriteOffers,
   updatePointsAndLevel,
   assignEditorAccess,
+  updateUserMapAccess,
 }

@@ -114,6 +114,12 @@ const UserSchema = new Schema<IUser, UserModel>(
         ref: 'Map',
       },
     ],
+    deactivatedMaps: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'Map',
+      },
+    ],
     // --- Points & Rewards ---
     points: { type: Number, default: 0 },
     level: { type: Number, default: 0 }, // starts at level 0: Explorador

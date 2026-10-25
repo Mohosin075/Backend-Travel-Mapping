@@ -555,6 +555,14 @@ const refundPayment = async (
       { new: true, runValidators: true },
     ).populate('userId', 'name email')
 
+    // Automatically remove user map access upon refund
+    if (payment.userId && payment.mapId) {
+      await User.findByIdAndUpdate(payment.userId, {
+        $pull: { purchasedMaps: payment.mapId },
+        $addToSet: { deactivatedMaps: payment.mapId },
+      })
+    }
+
     return result!
   } catch (error: any) {
     throw new ApiError(

@@ -187,3 +187,20 @@ export const assignEditorAccessZodSchema = z.object({
       }
     }),
 })
+
+export const updateUserMapAccessSchema = z.object({
+  params: z.object({
+    userId: z.string({
+      required_error: 'User ID is required',
+    }),
+  }),
+  body: z.object({
+    mapId: z.string({
+      required_error: 'Map ID is required',
+    }),
+    action: z.enum(['deactivate', 'reactivate', 'grant', 'remove'], {
+      required_error: 'Action is required (deactivate, reactivate, grant, or remove)',
+    }),
+  }),
+})
+

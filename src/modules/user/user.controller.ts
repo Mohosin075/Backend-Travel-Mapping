@@ -219,6 +219,25 @@ const assignEditorAccess = catchAsync(async (req: Request, res: Response) => {
   })
 })
 
+const updateUserMapAccess = catchAsync(async (req: Request, res: Response) => {
+  const { userId } = req.params
+  const { mapId, action } = req.body
+
+  const result = await UserServices.updateUserMapAccess(
+    userId,
+    mapId,
+    action,
+    req.user,
+  )
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: result.message,
+    data: result.user,
+  })
+})
+
 export const UserController = {
   updateProfile,
   getAllUsers,
@@ -236,4 +255,5 @@ export const UserController = {
   toggleFavoriteOffer,
   getFavoriteOffers,
   assignEditorAccess,
+  updateUserMapAccess,
 }

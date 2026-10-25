@@ -279,6 +279,43 @@ const handlePaymentFailure = async (paymentIntent: any): Promise<void> => {
   }
 }
 
+const handleChargeRefunded = async (charge: any): Promise<void> => {
+  try {
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id
+
+    if (!paymentIntentId) return
+
+    const payment = await Payment.findOne({
+      $or: [
+        { paymentIntentId },
+        { 'metadata.paymentIntentId': paymentIntentId },
+      ],
+    })
+
+    if (payment) {
+      payment.status = 'refunded'
+      payment.refundAmount = charge.amount_refunded
+        ? charge.amount_refunded / 100
+        : payment.amount
+      payment.refundReason =
+        charge.refunds?.data?.[0]?.reason || 'refunded_via_stripe'
+      await payment.save()
+
+      if (payment.userId && payment.mapId) {
+        await User.findByIdAndUpdate(payment.userId, {
+          $pull: { purchasedMaps: payment.mapId },
+          $addToSet: { deactivatedMaps: payment.mapId },
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Error handling charge.refunded webhook:', error)
+  }
+}
+
 export const WebhookService = {
   handleWebhook: async (payload: {
     body: any
@@ -325,6 +362,9 @@ export const WebhookService = {
           break
         case 'payment_intent.payment_failed':
           await handlePaymentFailure(event.data.object)
+          break
+        case 'charge.refunded':
+          await handleChargeRefunded(event.data.object)
           break
         default:
           console.log(`Unhandled event type: ${event.type}`)

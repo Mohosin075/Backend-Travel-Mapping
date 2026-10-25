@@ -1,91 +1,107 @@
+Map Access / Refund
 
-Recommended Places:
+Will there be a way to remove map access from people who have the map? For
+example, he is activated by invitation, but I no longer want him to have the
+map. Can you put a button on it to disable its map or remove access to its
+map?
 
-1. When recommending a place, the user is told they will earn 50 points, but they actually receive 25. Please ensure it consistently displays 25 points.
+Or in the event of a refund, be able to remove access from the map.
 solved
+
+NEW FEATURES: FIXES
+
+Notifications:
+1. When a review of mine is approved, the red notification dot does not appear,
+   even though I do receive a notification stating that my review has been approved.
+
 Route Planner:
+1. Remove the "view place" button, leaving only the "get directions" button.
 
-1. When a created route is selected, the "get directions" button is missing for each location along the route.
-solved
+2. Remove the text displaying the category, as the information currently appears
+   too cluttered.
 
-2. Tapping on a location's name should redirect the user to that location's information page.
-solved
+3. In the mobile version, the information elements are stacked on top of each
+   other, which looks poor both visually and aesthetically. Please display only
+   the photo, the name of the place, the address, and the "get directions" button.
 
-3. Temporarily remove the map view that displays the numbered, plotted route-both in the editable and non-editable versions. - solved
+4. On the map used for adding locations to a route, the icons were enlarged, but
+   the borders were also increased in size. I meant for only the icon *inside* the
+   border to be enlarged, while keeping the border itself the same size as before.
+   Apologies if my previous explanation caused any confusion.
 
-4. On the map used for adding locations to a route, the category icons appear too small; please increase their size. - solved
-
-5. On the "Route Planner" edit page, remove the "My Routes" and "New Route" buttons from the top.
-solved
-
-This page should be dedicated exclusively to editing or creating the selected route. The goal is to ensure the interface is user-friendly and intuitive for everyone.
-
-6. When "Add Stop" is selected on the map, not all pins appear, even though "All Categories" is selected.
-solved
-
-7. When adding a stop, the window (or pop-up) currently closes after each selection; please keep it open so users don't have to repeatedly reopen it.
-solved
-
-8. Remove the "Routes" button from the main menu (which includes Map, Places, Offers, Catalog, and For Businesses); it should only appear in the secondary menu (alongside Favorite Places, Visited Places, etc.).
-solved
-
-9. On the route editing page, there is too much text, which creates visual clutter and causes confusion-for example, redundant mentions of "editing saved route," "locally saved draft," and the "Start New" button.
-solved
-
-10. On the route-editing page, remove the "navigate full route" button; keep it only on the non-editable (view-only) page.
-solved
+5. Remove the text that reads "View protected against accidental changes."
 
 
-
+GENERAL VERSION:
 Dashboard:
+--------------------------------------------------------------------------------
+1. On the statistics page, the list of users includes everyone rather than just
+   the relevant users (e.g., those active today, or those active over the last 7
+   days, etc.).
 
-1. When approving a review submitted via the "verification and moderation" page, the text "approve 0 points" appears instead of the correct value.
-solved
+2. On the offers page, the selected settings are not being saved; they have
+   reverted multiple times. For example, if I set an offer to be redeemable once per
+   week and save it, it resets to "once per day."
 
-2. On the statistics page, I am unable to view the profiles of users who have been active.
-solved
+3. On the map within the "places" page, when editing a location-specifically
+   when deleting existing photos and uploading a new one-the deleted photos
+   reappear while the page is loading. This appears to be a bug that could cause
+   confusion and negatively impact the user experience.
 
-3. On the "promotional links" page, there is a limit to how many recipients are displayed. Please add an option to view more, including pagination to access the remaining entries.
-solved
-
-4. On the "Offers" page, I am unable to set a duration for the countdown timer.
-solved
+4. Add an option to deactivate or reactivate the map for users who had previously
+   activated it but later requested a refund or had some other reason for needing
+   a change in status.
 
 Users:
+--------------------------------------------------------------------------------
+1. On the "map" page, when in dark mode, Google Maps location icons-such as
+   those for supermarkets, gas stations, malls, and any other places registered
+   on Google Maps-are visible. Other options. such as satellite view, light mode,
+   etc., display correctly.
 
-1. On the "Map" page, icons for Google Maps locations-such as supermarkets, gas stations, malls, and anything else registered on Google Maps-are visible. I do not want these to appear on this map; they should only be visible on the dashboard map.
-solved
+2. On the landing page, within the offers section, the official images for each
+   business/offer are not appearing: instead, photos of tourist attractions are
+   shown in place of the actual restaurant images.
 
-2. On the "My Business" page, redeemed offers are being tracked, but visits are not. Using the business "Bai Picnic" as an example: I have visited on different days using two separate accounts, yet the view count remains unchanged.
-solved
+3. I created a new badge reward worth 200 XP, but it did not unlock upon reaching
+   the required points; furthermore, my current point total is not being tracked.
+   However, when I changed the reward type to a PDF, a free map, etc., it worked
+   as expected. How do badges work?
 
-3. On the landing page, within the "Offers" section, the official images for each business/offer are not displaying; instead, photos of tourist attractions appear in place of the actual restaurant images. - later
+4. The levels displayed in the PROFILE section are not linked to the levels
+   defined in the dashboard.
 
-4. Please remove the "Purchased Maps" page from the menu; it serves no clear purpose and takes up unnecessary visual space.
-solved
+5. On the locations page, visited places should be highlighted with a subtle
+   border-matching the color of the border used for "visited" pins-without being
+   overly prominent. This is simply to help the user visually identify which places
+   they have already visited.
 
-5. I created a new badge-based reward requiring 200 XP, but it did not unlock upon reaching the required points; furthermore, my current point total is not being tracked. However, when I changed the reward type to a PDF, a free map, etc., it worked correctly. How do badges function?
-solved
+Users who have not purchased the map:
+1. Locked pins should not display the name of the location; currently. the names
+   are visible.
 
-6. One location-"Bai Picnic"-appears duplicated across the records, search tool, and dashboard, though it does not appear as a duplicate on the map itself.
-solved
+2. When new locations are added, users without an account should receive a
+   notification, but without the location name being revealed (e.g., "A new
+   location has been added to the map...").
 
-7. The levels displayed in user profiles, the rewards page, and elsewhere are not linked to the levels defined in the dashboard. It is essential that these update automatically whenever levels or point thresholds are modified or edited.
-solved
+3. Restrict tourist attractions within the route planner; currently, all
+   locations are visible, which may allow users to access paid/premium information.
 
-
-Users who have not purchased a map:
-
-1. For the time being, pins should appear at their respective locations, marked with a padlock icon and a call-to-action prompting users to activate the map to view them.
-solved
-
-2. Any newly added locations should be visible to users without an account, though the name of the location must remain hidden. Only "a location was added to the map... etc."
-solved
 
 MOBILE VERSION:
+1. When buttons are pressed, there is no visual animation to indicate that the
+   button has been activated, unlike in the PC version.
 
-1. When pressing the buttons, there is no animation to provide visual feedback that a button has been pressed, unlike in the PC version.
-solved
+Photographs / Images Adjustment:
+I would like to make this adjustment so that the photographs are better
+appreciated. since most of them are vertical. I will share before and after
+images with you so that you have a better reference than what I am looking for.
 
-2. On the "map" page, when I type a municipality into the search bar and press Enter, the keyboard remains on the screen, getting in the way.
-solved
+This adjustment should apply to both the mobile and PC versions.
+
+In addition. it is important that the visible part of the photograph is centered.
+so that the subject of the image is highlighted. This prevents cropping from
+showing only the sky (top) or the ground (bottom).
+
+The intention is to show a portion of the photograph. maintaining its original
+proportions. without deforming it and preserving an attractive desin.

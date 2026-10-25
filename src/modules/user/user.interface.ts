@@ -82,6 +82,7 @@ export interface IUser {
   visitedPlaces?: Types.ObjectId[]
   visitedPlacesCount?: number
   purchasedMaps?: Types.ObjectId[] // Ref Map
+  deactivatedMaps?: Types.ObjectId[] // Ref Map (deactivated or refunded access)
   awards?: any[]
 
   // --- Points & Rewards ---

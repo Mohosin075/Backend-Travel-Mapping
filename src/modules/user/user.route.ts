@@ -16,6 +16,7 @@ import {
   inviteUserSchema,
   updateUserRoleSchema,
   assignEditorAccessZodSchema,
+  updateUserMapAccessSchema,
 } from './user.validation'
 import { fileAndBodyProcessorUsingDiskStorage } from '../../middleware/processReqBody'
 
@@ -86,6 +87,20 @@ router.patch(
   UserController.updateUserRole,
 )
 
+router.patch(
+  '/assign-editor-access/:userId',
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  validateRequest(assignEditorAccessZodSchema),
+  UserController.assignEditorAccess,
+)
+
+router.patch(
+  '/map-access/:userId',
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  validateRequest(updateUserMapAccessSchema),
+  UserController.updateUserMapAccess,
+)
+
 router.delete(
   '/profile',
   auth(
@@ -119,12 +134,5 @@ router
     // validateRequest(updateUserSchema),
     UserController.updateUserStatus,
   )
-
-router.patch(
-  '/assign-editor-access/:userId',
-  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
-  validateRequest(assignEditorAccessZodSchema),
-  UserController.assignEditorAccess,
-)
 
 export const UserRoutes = router
