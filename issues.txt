@@ -106,6 +106,7 @@ Users who have not purchased the map:
 MOBILE VERSION:
 1. When buttons are pressed, there is no visual animation to indicate that the
    button has been activated, unlike in the PC version.
+   solved
 
 Photographs / Images Adjustment:
 I would like to make this adjustment so that the photographs are better
@@ -120,3 +121,5 @@ showing only the sky (top) or the ground (bottom).
 
 The intention is to show a portion of the photograph. maintaining its original
 proportions. without deforming it and preserving an attractive desin.
+   solved
+
