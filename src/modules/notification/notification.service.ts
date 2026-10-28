@@ -22,6 +22,8 @@ import { Types } from 'mongoose'
 import { emailProvider } from './notification.providers'
 import { User } from '../user/user.model'
 import config from '../../config'
+import { getAccessibleMapIds } from '../../helpers/mapAccessHelper'
+import { sanitizeLocationNotification } from './notification.privacy'
 import { autoTranslateField } from '../../utils/autoTranslate'
 
 const getSocketIO = () => (global as any).io
@@ -29,6 +31,9 @@ const getSocketIO = () => (global as any).io
 const emitSocketToUser = (userId: string, event: string, payload: any) => {
   const io = getSocketIO()
   if (!io) return
+  if (event === 'notification' && payload?.data) {
+    payload = { ...payload, data: sanitizeLocationNotification(payload.data) }
+  }
   io.to(userId).emit(event, payload)
   io.to(`room:${userId}`).emit(event, payload)
 }
@@ -36,10 +41,33 @@ const emitSocketToUser = (userId: string, event: string, payload: any) => {
 const emitBroadcastSocket = (event: string, payload: any, room?: string) => {
   const io = getSocketIO()
   if (!io) return
+  if (event === 'notification' && payload?.data) {
+    payload = { ...payload, data: sanitizeLocationNotification(payload.data) }
+  }
   if (room) {
     io.to(room).emit(event, payload)
   } else {
     io.emit(event, payload)
+  }
+}
+
+// Used by every notification response, including by-ID, read and archive APIs.
+const sanitizeNotificationResponse = async <T>(value: T, user: any): Promise<T> => {
+  const items: any[] = Array.isArray(value) ? value : [value]
+  if (!items.some(item => item?.type === NotificationType.NEW_LOCATION)) return value
+  const privileged = ['super_admin', 'admin', 'map_editor'].includes(user?.role)
+  const accessibleMapIds = privileged ? [] : await getAccessibleMapIds(user)
+  const sanitized = items.map(item => sanitizeLocationNotification(item, accessibleMapIds, privileged))
+  return (Array.isArray(value) ? sanitized : sanitized[0]) as T
+}
+
+const locationSearchAccess = async (user: any) => {
+  const mapIds = await getAccessibleMapIds(user)
+  return {
+    $or: [
+      { type: { $ne: NotificationType.NEW_LOCATION } },
+      { 'metadata.mapId': { $in: [...mapIds, ...mapIds.map(id => new Types.ObjectId(id))] } },
+    ],
   }
 }
 
@@ -149,6 +177,8 @@ const sendNotificationEmail = async (
       throw new Error('User not found or no email available')
     }
 
+    notification = await sanitizeNotificationResponse(notification, user)
+
     let template: string = 'system-alert'
     const titleStr =
       typeof notification.title === 'object' && notification.title !== null
@@ -237,6 +267,11 @@ const getAllNotifications = async (
     paginationHelper.calculatePagination(pagination)
 
   const andConditions: Record<string, any>[] = []
+
+  // Do not allow hidden location names to be inferred through notification search.
+  if (searchTerm && !['super_admin', 'admin', 'map_editor'].includes(user.role)) {
+    andConditions.push(await locationSearchAccess(user))
+  }
 
   // Search term
   if (searchTerm) {
@@ -837,6 +872,11 @@ const getMyNotifications = async (
     andConditions.push({ priority: filterables.priority })
   }
 
+  // Do not match a locked location's stored name, even though its display is generic.
+  if (filterables.searchTerm?.trim() && !['super_admin', 'admin', 'map_editor'].includes(user.role || '')) {
+    andConditions.push(await locationSearchAccess(user))
+  }
+
   // Search term
   if (filterables.searchTerm && filterables.searchTerm.trim() !== '') {
     const term = filterables.searchTerm.trim()
@@ -1051,6 +1091,7 @@ const dispatchTailoredNotification = async (payload: {
 }
 
 export const NotificationServices = {
+  sanitizeNotificationResponse,
   createNotification,
   sendNotificationEmail,
   getAllNotifications,

@@ -19,7 +19,7 @@ const createNotification = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.CREATED,
     success: true,
     message: 'Notification created successfully',
-    data: localizeDocument(result, req.lang, notificationFields),
+    data: localizeDocument(await NotificationServices.sanitizeNotificationResponse(result, req.user), req.lang, notificationFields),
   })
 })
 
@@ -42,7 +42,7 @@ const getAllNotifications = catchAsync(async (req: Request, res: Response) => {
     success: true,
     message: 'Notifications retrieved successfully',
     meta: result.meta,
-    data: localizeDocument(result.data, req.lang, notificationFields),
+    data: localizeDocument(await NotificationServices.sanitizeNotificationResponse(result.data, req.user), req.lang, notificationFields),
   })
 })
 
@@ -65,7 +65,7 @@ const getMyNotifications = catchAsync(async (req: Request, res: Response) => {
     success: true,
     message: 'My notifications retrieved successfully',
     meta: result.meta,
-    data: localizeDocument(result.data, req.lang, notificationFields),
+    data: localizeDocument(await NotificationServices.sanitizeNotificationResponse(result.data, req.user), req.lang, notificationFields),
   })
 })
 
@@ -77,7 +77,7 @@ const getUnreadCount = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Unread notification count retrieved successfully',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -89,7 +89,7 @@ const getNotificationById = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notification retrieved successfully',
-    data: localizeDocument(result, req.lang, notificationFields),
+    data: localizeDocument(await NotificationServices.sanitizeNotificationResponse(result, req.user), req.lang, notificationFields),
   })
 })
 
@@ -107,7 +107,7 @@ const updateNotification = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notification updated successfully',
-    data: localizeDocument(result, req.lang, notificationFields),
+    data: localizeDocument(await NotificationServices.sanitizeNotificationResponse(result, req.user), req.lang, notificationFields),
   })
 })
 
@@ -121,7 +121,7 @@ const markAsRead = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notification marked as read',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -134,7 +134,7 @@ const markAllAsRead = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'All notifications marked as read',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -150,7 +150,7 @@ const clearMyNotifications = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notifications cleared successfully',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -164,7 +164,7 @@ const archiveNotification = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notification archived',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -177,7 +177,7 @@ const deleteNotification = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notification deleted successfully',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -190,7 +190,7 @@ const getNotificationStats = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Notification statistics retrieved',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -203,7 +203,7 @@ const sendTestEmail = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Test email sent successfully',
-    data: result,
+    data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
   })
 })
 
@@ -215,7 +215,7 @@ const sendManualNotification = catchAsync(
       statusCode: StatusCodes.OK,
       success: true,
       message: 'Manual notifications sent successfully',
-      data: result,
+      data: await NotificationServices.sanitizeNotificationResponse(result, req.user),
     })
   },
 )

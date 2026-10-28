@@ -1,0 +1,18 @@
+
+Users:
+
+1. If a user wishes to change their password, the system does not allow it (it is not listed as a privacy option).
+
+2. If a user does not upload a profile picture, a default image should be displayed. Currently, when there is no photo, the profile picture area looks as if there is an image loading error.
+
+3. When accessing the profile section, the system prompts "edit profile" first, followed by "view profile." I would prefer for the profile to be displayed first, with an "edit profile" option available afterward.
+
+4. An error occurs when selecting "view profile."
+
+5. Replace or add the images for the landing page (I will provide these via Google Drive).
+
+Users who have not purchased a map:
+
+1. When using the search bar, the search results reveal premium locations.
+
+2. When new locations are added, users without an account should receive a notification-but without revealing the name of the location. It should simply state something like, "A new location has been added to the map of..."

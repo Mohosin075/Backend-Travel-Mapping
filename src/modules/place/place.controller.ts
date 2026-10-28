@@ -61,7 +61,7 @@ const getAllPlaces = catchAsync(async (req: Request, res: Response) => {
 
   const isPremium = !!(user && [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR].includes(user.role as any))
 
-  const result = await PlaceService.getAllPlaces(req.query, isPremium)
+  const result = await PlaceService.getAllPlaces(req.query, isPremium, accessibleMapIds)
 
   const visitedSet = new Set(
     (user?.visitedPlaces || []).map((id: any) => id.toString())
