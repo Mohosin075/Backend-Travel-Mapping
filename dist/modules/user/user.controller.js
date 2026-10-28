@@ -12,6 +12,7 @@ const pick_1 = __importDefault(require("../../shared/pick"));
 const pagination_1 = require("../../interfaces/pagination");
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const user_constants_1 = require("./user.constants");
+const mapAccessHelper_1 = require("../../helpers/mapAccessHelper");
 const updateProfile = (0, catchAsync_1.default)(async (req, res) => {
     const { images, ...userData } = req.body;
     if (images) {
@@ -118,7 +119,8 @@ const getProfile = (0, catchAsync_1.default)(async (req, res) => {
 });
 const getPublicProfile = (0, catchAsync_1.default)(async (req, res) => {
     const { userId } = req.params;
-    const result = await user_service_1.UserServices.getPublicProfile(userId);
+    const requester = await (0, mapAccessHelper_1.getUserFromToken)(req.headers.authorization);
+    const result = await user_service_1.UserServices.getPublicProfile(userId, requester);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,

@@ -19,7 +19,7 @@ const createNotification = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.CREATED,
         success: true,
         message: 'Notification created successfully',
-        data: (0, localize_1.localizeDocument)(result, req.lang, notificationFields),
+        data: (0, localize_1.localizeDocument)(await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user), req.lang, notificationFields),
     });
 });
 const getAllNotifications = (0, catchAsync_1.default)(async (req, res) => {
@@ -32,7 +32,7 @@ const getAllNotifications = (0, catchAsync_1.default)(async (req, res) => {
         success: true,
         message: 'Notifications retrieved successfully',
         meta: result.meta,
-        data: (0, localize_1.localizeDocument)(result.data, req.lang, notificationFields),
+        data: (0, localize_1.localizeDocument)(await notification_service_1.NotificationServices.sanitizeNotificationResponse(result.data, req.user), req.lang, notificationFields),
     });
 });
 const getMyNotifications = (0, catchAsync_1.default)(async (req, res) => {
@@ -45,7 +45,7 @@ const getMyNotifications = (0, catchAsync_1.default)(async (req, res) => {
         success: true,
         message: 'My notifications retrieved successfully',
         meta: result.meta,
-        data: (0, localize_1.localizeDocument)(result.data, req.lang, notificationFields),
+        data: (0, localize_1.localizeDocument)(await notification_service_1.NotificationServices.sanitizeNotificationResponse(result.data, req.user), req.lang, notificationFields),
     });
 });
 const getUnreadCount = (0, catchAsync_1.default)(async (req, res) => {
@@ -55,7 +55,7 @@ const getUnreadCount = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Unread notification count retrieved successfully',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const getNotificationById = (0, catchAsync_1.default)(async (req, res) => {
@@ -65,7 +65,7 @@ const getNotificationById = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notification retrieved successfully',
-        data: (0, localize_1.localizeDocument)(result, req.lang, notificationFields),
+        data: (0, localize_1.localizeDocument)(await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user), req.lang, notificationFields),
     });
 });
 const updateNotification = (0, catchAsync_1.default)(async (req, res) => {
@@ -76,7 +76,7 @@ const updateNotification = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notification updated successfully',
-        data: (0, localize_1.localizeDocument)(result, req.lang, notificationFields),
+        data: (0, localize_1.localizeDocument)(await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user), req.lang, notificationFields),
     });
 });
 const markAsRead = (0, catchAsync_1.default)(async (req, res) => {
@@ -87,7 +87,7 @@ const markAsRead = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notification marked as read',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const markAllAsRead = (0, catchAsync_1.default)(async (req, res) => {
@@ -97,7 +97,7 @@ const markAllAsRead = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'All notifications marked as read',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const clearMyNotifications = (0, catchAsync_1.default)(async (req, res) => {
@@ -107,7 +107,7 @@ const clearMyNotifications = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notifications cleared successfully',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const archiveNotification = (0, catchAsync_1.default)(async (req, res) => {
@@ -118,7 +118,7 @@ const archiveNotification = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notification archived',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const deleteNotification = (0, catchAsync_1.default)(async (req, res) => {
@@ -128,7 +128,7 @@ const deleteNotification = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notification deleted successfully',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const getNotificationStats = (0, catchAsync_1.default)(async (req, res) => {
@@ -138,7 +138,7 @@ const getNotificationStats = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Notification statistics retrieved',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const sendTestEmail = (0, catchAsync_1.default)(async (req, res) => {
@@ -148,7 +148,7 @@ const sendTestEmail = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Test email sent successfully',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 const sendManualNotification = (0, catchAsync_1.default)(async (req, res) => {
@@ -157,7 +157,7 @@ const sendManualNotification = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Manual notifications sent successfully',
-        data: result,
+        data: await notification_service_1.NotificationServices.sanitizeNotificationResponse(result, req.user),
     });
 });
 exports.NotificationController = {

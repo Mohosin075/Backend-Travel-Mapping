@@ -56,7 +56,7 @@ const getAllPlaces = (0, catchAsync_1.default)(async (req, res) => {
     const paidMapIds = paidMaps.map(m => m._id.toString());
     const lockedMapIds = paidMapIds.filter(id => !accessibleMapIds.includes(id));
     const isPremium = !!(user && [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role));
-    const result = await place_service_1.PlaceService.getAllPlaces(req.query, isPremium);
+    const result = await place_service_1.PlaceService.getAllPlaces(req.query, isPremium, accessibleMapIds);
     const visitedSet = new Set(((user === null || user === void 0 ? void 0 : user.visitedPlaces) || []).map((id) => id.toString()));
     const updatedData = result.data.map((place) => {
         var _a;

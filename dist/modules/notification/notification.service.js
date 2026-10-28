@@ -14,12 +14,17 @@ const mongoose_1 = require("mongoose");
 const notification_providers_1 = require("./notification.providers");
 const user_model_1 = require("../user/user.model");
 const config_1 = __importDefault(require("../../config"));
+const mapAccessHelper_1 = require("../../helpers/mapAccessHelper");
+const notification_privacy_1 = require("./notification.privacy");
 const autoTranslate_1 = require("../../utils/autoTranslate");
 const getSocketIO = () => global.io;
 const emitSocketToUser = (userId, event, payload) => {
     const io = getSocketIO();
     if (!io)
         return;
+    if (event === 'notification' && (payload === null || payload === void 0 ? void 0 : payload.data)) {
+        payload = { ...payload, data: (0, notification_privacy_1.sanitizeLocationNotification)(payload.data) };
+    }
     io.to(userId).emit(event, payload);
     io.to(`room:${userId}`).emit(event, payload);
 };
@@ -27,12 +32,34 @@ const emitBroadcastSocket = (event, payload, room) => {
     const io = getSocketIO();
     if (!io)
         return;
+    if (event === 'notification' && (payload === null || payload === void 0 ? void 0 : payload.data)) {
+        payload = { ...payload, data: (0, notification_privacy_1.sanitizeLocationNotification)(payload.data) };
+    }
     if (room) {
         io.to(room).emit(event, payload);
     }
     else {
         io.emit(event, payload);
     }
+};
+// Used by every notification response, including by-ID, read and archive APIs.
+const sanitizeNotificationResponse = async (value, user) => {
+    const items = Array.isArray(value) ? value : [value];
+    if (!items.some(item => (item === null || item === void 0 ? void 0 : item.type) === notification_interface_1.NotificationType.NEW_LOCATION))
+        return value;
+    const privileged = ['super_admin', 'admin', 'map_editor'].includes(user === null || user === void 0 ? void 0 : user.role);
+    const accessibleMapIds = privileged ? [] : await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
+    const sanitized = items.map(item => (0, notification_privacy_1.sanitizeLocationNotification)(item, accessibleMapIds, privileged));
+    return (Array.isArray(value) ? sanitized : sanitized[0]);
+};
+const locationSearchAccess = async (user) => {
+    const mapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
+    return {
+        $or: [
+            { type: { $ne: notification_interface_1.NotificationType.NEW_LOCATION } },
+            { 'metadata.mapId': { $in: [...mapIds, ...mapIds.map(id => new mongoose_1.Types.ObjectId(id))] } },
+        ],
+    };
 };
 const processNotificationTranslations = async (payload) => {
     if (payload.title)
@@ -117,6 +144,7 @@ const sendNotificationEmail = async (notification) => {
         if (!user || !user.email) {
             throw new Error('User not found or no email available');
         }
+        notification = await sanitizeNotificationResponse(notification, user);
         let template = 'system-alert';
         const titleStr = typeof notification.title === 'object' && notification.title !== null
             ? (notification.title.es || notification.title.en || '')
@@ -179,6 +207,10 @@ const getAllNotifications = async (user, filterables, pagination) => {
     const { searchTerm, ...filterData } = filterables;
     const { page, skip, limit, sortBy, sortOrder } = paginationHelper_1.paginationHelper.calculatePagination(pagination);
     const andConditions = [];
+    // Do not allow hidden location names to be inferred through notification search.
+    if (searchTerm && !['super_admin', 'admin', 'map_editor'].includes(user.role)) {
+        andConditions.push(await locationSearchAccess(user));
+    }
     // Search term
     if (searchTerm) {
         andConditions.push({
@@ -600,6 +632,7 @@ const getNotificationStats = async (user) => {
     return stats;
 };
 const getMyNotifications = async (user, filterables = {}, pagination) => {
+    var _a;
     const { page, skip, limit, sortBy, sortOrder } = paginationHelper_1.paginationHelper.calculatePagination(pagination);
     const userObjectId = new mongoose_1.Types.ObjectId(user.authId);
     const userDoc = await user_model_1.User.findById(user.authId).select('interest').lean();
@@ -656,6 +689,10 @@ const getMyNotifications = async (user, filterables = {}, pagination) => {
     // Priority filter
     if (filterables.priority) {
         andConditions.push({ priority: filterables.priority });
+    }
+    // Do not match a locked location's stored name, even though its display is generic.
+    if (((_a = filterables.searchTerm) === null || _a === void 0 ? void 0 : _a.trim()) && !['super_admin', 'admin', 'map_editor'].includes(user.role || '')) {
+        andConditions.push(await locationSearchAccess(user));
     }
     // Search term
     if (filterables.searchTerm && filterables.searchTerm.trim() !== '') {
@@ -821,6 +858,7 @@ const dispatchTailoredNotification = async (payload) => {
     }
 };
 exports.NotificationServices = {
+    sanitizeNotificationResponse,
     createNotification,
     sendNotificationEmail,
     getAllNotifications,

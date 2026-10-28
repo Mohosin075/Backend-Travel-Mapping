@@ -316,7 +316,7 @@ function buildPlaceSearchFilter(searchTerm, isBusiness = false) {
         ],
     };
 }
-const getAllPlaces = async (query, isAdminOrEditor = false) => {
+const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = []) => {
     const searchTerm = typeof query.searchTerm === 'string' ? query.searchTerm.trim() : '';
     const lat = toNumber(query.lat);
     const lng = toNumber(query.lng);
@@ -356,6 +356,11 @@ const getAllPlaces = async (query, isAdminOrEditor = false) => {
         if (searchFilter) {
             Object.assign(match, searchFilter);
         }
+    }
+    // Apply access before deduplication and pagination so locked search hits cannot
+    // reveal names or displace accessible results. Unfiltered map teasers are unchanged.
+    if (searchTerm && !isAdminOrEditor) {
+        match.$and = [{ map: { $in: accessibleMapIds } }];
     }
     // 1. Fetch regular places if applicable
     const queryType = query.type;

@@ -9,8 +9,6 @@ Users:
 
 4. An error occurs when selecting "view profile."
 
-5. Replace or add the images for the landing page (I will provide these via Google Drive).
-
 Users who have not purchased a map:
 
 1. When using the search bar, the search results reveal premium locations.

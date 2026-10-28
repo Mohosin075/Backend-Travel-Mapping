@@ -345,20 +345,23 @@ const getUserById = async (userId) => {
     };
 };
 /** Public, shareable profile — safe fields only */
-const getPublicProfile = async (userId) => {
+const getPublicProfile = async (userId, requester) => {
     var _a;
     if (!mongoose_1.Types.ObjectId.isValid(userId)) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid User ID.');
     }
     const user = await user_model_1.User.findOne({
         _id: userId,
-        status: user_1.USER_STATUS.ACTIVE,
-        verified: true,
+        status: { $ne: user_1.USER_STATUS.DELETED },
     }).select('name profile level points role createdAt website instagram description specialty settings.profileStatus visitedPlacesCount address');
     if (!user) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Profile not found.');
     }
-    if (((_a = user.settings) === null || _a === void 0 ? void 0 : _a.profileStatus) === 'private') {
+    const requesterId = (requester === null || requester === void 0 ? void 0 : requester.authId) || (requester === null || requester === void 0 ? void 0 : requester._id);
+    const isOwner = Boolean(requesterId && String(requesterId) === String(userId));
+    const isStaff = Boolean(requester &&
+        [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(requester.role));
+    if (((_a = user.settings) === null || _a === void 0 ? void 0 : _a.profileStatus) === 'private' && !isOwner && !isStaff) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This profile is private.');
     }
     // Fetch user's approved reviews with place/business names
@@ -385,8 +388,12 @@ const getPublicProfile = async (userId) => {
     const points = user.points || 0;
     const approvedReviews = user.totalReviewsApproved || 0;
     const levelInfo = await levelConfig_service_1.LevelConfigServices.getDynamicUserLevel(points, approvedReviews);
+    const userObj = user.toObject();
+    if (userObj.profile === '/images/1767048629458-l94gk7.jpg') {
+        userObj.profile = '';
+    }
     return {
-        ...user.toObject(),
+        ...userObj,
         level: levelInfo.levelNumber,
         levelInfo,
         reviews,
@@ -578,8 +585,12 @@ const getProfile = async (user) => {
             { pointsAwarded: { $gt: 0 } },
         ],
     });
+    const userObj = isUserExist.toObject();
+    if (userObj.profile === '/images/1767048629458-l94gk7.jpg') {
+        userObj.profile = '';
+    }
     return {
-        ...isUserExist.toObject(),
+        ...userObj,
         level: levelInfo.levelNumber,
         levelInfo,
         approvedRecommendedPlacesCount,
