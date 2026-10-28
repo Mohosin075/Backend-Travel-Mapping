@@ -422,15 +422,14 @@ const getUserById = async (userId: string): Promise<any> => {
 }
 
 /** Public, shareable profile — safe fields only */
-const getPublicProfile = async (userId: string) => {
+const getPublicProfile = async (userId: string, requester?: any) => {
   if (!Types.ObjectId.isValid(userId)) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid User ID.')
   }
 
   const user = await User.findOne({
     _id: userId,
-    status: USER_STATUS.ACTIVE,
-    verified: true,
+    status: { $ne: USER_STATUS.DELETED },
   }).select(
     'name profile level points role createdAt website instagram description specialty settings.profileStatus visitedPlacesCount address',
   )
@@ -439,7 +438,16 @@ const getPublicProfile = async (userId: string) => {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Profile not found.')
   }
 
-  if (user.settings?.profileStatus === 'private') {
+  const requesterId = requester?.authId || requester?._id
+  const isOwner = Boolean(requesterId && String(requesterId) === String(userId))
+  const isStaff = Boolean(
+    requester &&
+      [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR].includes(
+        requester.role,
+      ),
+  )
+
+  if (user.settings?.profileStatus === 'private' && !isOwner && !isStaff) {
     throw new ApiError(StatusCodes.FORBIDDEN, 'This profile is private.')
   }
 
@@ -473,8 +481,13 @@ const getPublicProfile = async (userId: string) => {
     approvedReviews
   )
 
+  const userObj = user.toObject()
+  if (userObj.profile === '/images/1767048629458-l94gk7.jpg') {
+    userObj.profile = ''
+  }
+
   return {
-    ...user.toObject(),
+    ...userObj,
     level: levelInfo.levelNumber,
     levelInfo,
     reviews,
@@ -773,8 +786,13 @@ export const getProfile = async (user: JwtPayload) => {
     ],
   })
 
+  const userObj = isUserExist.toObject()
+  if (userObj.profile === '/images/1767048629458-l94gk7.jpg') {
+    userObj.profile = ''
+  }
+
   return {
-    ...isUserExist.toObject(),
+    ...userObj,
     level: levelInfo.levelNumber,
     levelInfo,
     approvedRecommendedPlacesCount,

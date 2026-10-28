@@ -8,7 +8,7 @@ const UserSchema = new Schema<IUser, UserModel>(
   {
     name: { type: String, trim: true },
     email: { type: String, unique: true, lowercase: true, required: true },
-    profile: { type: String, default: '/images/1767048629458-l94gk7.jpg' },
+    profile: { type: String, default: '' },
     phone: { type: String },
     website: { type: String },
     instagram: { type: String },

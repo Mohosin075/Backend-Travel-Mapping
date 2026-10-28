@@ -11,6 +11,7 @@ import { JwtPayload } from 'jsonwebtoken'
 import ApiError from '../../errors/ApiError'
 import { userFilterableFields } from './user.constants'
 import { IUser } from './user.interface'
+import { getUserFromToken } from '../../helpers/mapAccessHelper'
 
 const updateProfile = catchAsync(async (req: Request, res: Response) => {
   const { images, ...userData } = req.body
@@ -136,7 +137,8 @@ const getProfile = catchAsync(async (req: Request, res: Response) => {
 
 const getPublicProfile = catchAsync(async (req: Request, res: Response) => {
   const { userId } = req.params
-  const result = await UserServices.getPublicProfile(userId)
+  const requester = await getUserFromToken(req.headers.authorization)
+  const result = await UserServices.getPublicProfile(userId, requester)
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
