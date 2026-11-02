@@ -34,15 +34,15 @@ Users without buying a map:
 
 Users:
 
-1. If I have selected the map of Costa Rica, when I go to the "offers" page, you can see the offers from other countries. Only the offers of the corresponding country should be seen, such as on the "places" and "maps" page.
+1. If I have selected the map of Costa Rica, when I go to the "offers" page, you can see the offers from other countries. Only the offers of the corresponding country should be seen, such as on the "places" and "maps" page. - [SOLVED]
 
-2. On the "My Routes" page, when the user is editing the route and "save route," it should be saved and directed to the non-editable page.
+2. On the "My Routes" page, when the user is editing the route and "save route," it should be saved and directed to the non-editable page. - [SOLVED]
 
-3. On the "my routes" page, when you enter the editable and non-editable path, you can not see the "x" to exit the page, since it is covered with the main menu. It also happens when you add a new stop.
+3. On the "my routes" page, when you enter the editable and non-editable path, you can not see the "x" to exit the page, since it is covered with the main menu. It also happens when you add a new stop. - [SOLVED]
 
 
 
 Dashboard:
-4. On the map of the places page, it does not let me drag the pins to change their location.
+4. On the map of the places page, it does not let me drag the pins to change their location. - [SOLVED]
 5. I need that when editing a place, the checkmark of the "always open" option is selected or
-deselected depending on what has been previously granted.
+deselected depending on what has been previously granted. - [SOLVED]

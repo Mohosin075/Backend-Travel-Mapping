@@ -10,6 +10,7 @@ import QueryBuilder from '../../builder/QueryBuilder'
 import { BOGO_SECOND_TYPE, DISCOUNT_TYPE, OFFER_STATUS } from '../../enum/offer'
 import { Business } from '../business/business.model'
 import { Place } from '../place/place.model'
+import { Map as MapModel } from '../map/map.model'
 import { autoTranslateField } from '../../utils/autoTranslate'
 import {
   getUserFromToken,
@@ -143,6 +144,9 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
   const searchTerm =
     typeof queryObj.searchTerm === 'string' ? queryObj.searchTerm.trim() : ''
   delete queryObj.country
+  const map =
+    typeof queryObj.map === 'string' ? queryObj.map.trim() : ''
+  delete queryObj.map
   delete queryObj.searchTerm
 
   // Find all approved businesses with active subscriptions
@@ -162,17 +166,75 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
     },
   ]
 
-  // Filter by country if provided
-  if (country) {
-    const countryRegex = new RegExp(`^${escapeRegex(country)}$`, 'i')
+  // Filter by country or map if provided
+  if (country || map) {
+    const mapOrConditions: any[] = []
+    if (map && Types.ObjectId.isValid(map)) {
+      mapOrConditions.push({ _id: new Types.ObjectId(map) })
+    }
+    if (country) {
+      if (Types.ObjectId.isValid(country)) {
+        mapOrConditions.push({ _id: new Types.ObjectId(country) })
+      }
+      const cRegex = new RegExp('^' + escapeRegex(country) + '$', 'i')
+      mapOrConditions.push(
+        { country: cRegex },
+        { 'name.en': cRegex },
+        { 'name.es': cRegex },
+        { name: cRegex },
+      )
+    }
+
+    const matchingMaps =
+      mapOrConditions.length > 0
+        ? await (MapModel as any).find({ $or: mapOrConditions }).select('_id name country').lean()
+        : []
+
+    const mapIds = matchingMaps.map((m: any) => m._id)
+    const mapCountries = matchingMaps.map((m: any) => m.country).filter(Boolean) as string[]
+    const mapNames = matchingMaps
+      .map((m: any) => (typeof m.name === 'string' ? m.name : (m.name?.es || m.name?.en)))
+      .filter(Boolean) as string[]
+
+    const allCountryStrings = Array.from(
+      new Set([
+        ...(country ? [country] : []),
+        ...mapCountries,
+        ...mapNames,
+      ]),
+    )
+
+
+    const countryRegexes = allCountryStrings.map(
+      c => new RegExp('^' + escapeRegex(c) + '$', 'i'),
+    )
+
+    const placeOr: any[] = []
+    if (countryRegexes.length > 0) {
+      placeOr.push({ country: { $in: countryRegexes } })
+    }
+    if (mapIds.length > 0) {
+      placeOr.push({ map: { $in: mapIds } })
+    }
+
+    const businessOr: any[] = []
+    if (countryRegexes.length > 0) {
+      businessOr.push(
+        { 'location.country': { $in: countryRegexes } },
+        { country: { $in: countryRegexes } },
+      )
+    }
+    if (mapIds.length > 0) {
+      businessOr.push({ map: { $in: mapIds } })
+    }
+
     const [matchingPlaces, matchingBusinesses] = await Promise.all([
-      Place.find({ country: countryRegex }).select('_id').lean(),
-      Business.find({
-        $or: [
-          { 'location.country': countryRegex },
-          { country: countryRegex },
-        ],
-      }).select('_id').lean(),
+      placeOr.length > 0
+        ? Place.find({ $or: placeOr }).select('_id').lean()
+        : Promise.resolve([]),
+      businessOr.length > 0
+        ? Business.find({ $or: businessOr }).select('_id').lean()
+        : Promise.resolve([]),
     ])
 
     const placeIds = matchingPlaces.map(p => p._id)
@@ -233,8 +295,16 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
 
   const offerQuery = new QueryBuilder(
     Offer.find(finalFilter)
-      .populate('business', 'name location media status category map country')
-      .populate('place', 'name location media status category map country address')
+      .populate({
+        path: 'business',
+        select: 'name location media status category map country',
+        populate: { path: 'map', select: 'name country' },
+      })
+      .populate({
+        path: 'place',
+        select: 'name location media status category map country address',
+        populate: { path: 'map', select: 'name country' },
+      })
       .lean(),
     queryObj,
   )
@@ -300,8 +370,16 @@ const getOfferById = async (id: string, authHeader?: string): Promise<any> => {
   const [user, rawResult] = await Promise.all([
     getUserFromToken(authHeader),
     Offer.findById(id)
-      .populate('place', 'name location media status category map country address')
-      .populate('business', 'name location media status category'),
+      .populate({
+        path: 'place',
+        select: 'name location media status category map country address',
+        populate: { path: 'map', select: 'name country' },
+      })
+      .populate({
+        path: 'business',
+        select: 'name location media status category map country',
+        populate: { path: 'map', select: 'name country' },
+      }),
   ])
 
   if (!rawResult) {
