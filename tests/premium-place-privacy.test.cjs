@@ -60,7 +60,7 @@ function chain(rows) {
   return result
 }
 
-test('place search applies access in the database before pagination; browse/staff retain teasers', async () => {
+test('municipality search retains locked-place teasers for guests and owners', async () => {
   let query
   const rows = [
     { _id: 'locked', name: 'Ponce secret', map: 'paid' },
@@ -76,12 +76,12 @@ test('place search applies access in the database before pagination; browse/staf
     '../business/business.model': { Business: { find: () => chain([{ _id: 'business', name: 'Ponce cafe', status: 'Approved' }]) } },
   })
   const guest = await PlaceService.getAllPlaces({ searchTerm: 'Ponce', type: 'Regular', limit: 1 }, false, ['free'])
-  assert.deepEqual(plain(query.$and), [{ map: { $in: ['free'] } }])
+  assert.equal(query.$and, undefined, 'search must include unowned map pins')
   assert.equal(guest.data.length, 1)
-  assert.equal(guest.data[0]._id, 'free')
-  assert.equal(guest.meta.total, 1)
+  assert.equal(guest.data[0]._id, 'locked')
+  assert.equal(guest.meta.total, 3)
   const owner = await PlaceService.getAllPlaces({ searchTerm: 'Ponce', type: 'Regular' }, false, ['owned', 'free'])
-  assert.deepEqual(plain(owner.data.map(p => p._id)).sort(), ['free', 'owned'])
+  assert.deepEqual(plain(owner.data.map(p => p._id)).sort(), ['free', 'locked', 'owned'])
   const business = await PlaceService.getAllPlaces({ searchTerm: 'Ponce', type: 'Business' }, false, [])
   assert.equal(business.data[0]._id, 'business')
   await PlaceService.getAllPlaces({ type: 'Regular' }, false, [])
