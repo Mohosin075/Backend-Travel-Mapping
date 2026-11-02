@@ -59,9 +59,11 @@ const getAllPlaces = catchAsync(async (req: Request, res: Response) => {
   const paidMapIds = paidMaps.map(m => m._id.toString())
   const lockedMapIds = paidMapIds.filter(id => !accessibleMapIds.includes(id))
 
-  const isPremium = !!(user && [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR].includes(user.role as any))
+  const isSuperOrAdmin = !!(user && [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(user.role as any))
+  const isEditor = !!(user && user.role === USER_ROLES.MAP_EDITOR)
+  const isAdminOrEditor = isSuperOrAdmin || isEditor
 
-  const result = await PlaceService.getAllPlaces(req.query, isPremium, accessibleMapIds)
+  const result = await PlaceService.getAllPlaces(req.query, isAdminOrEditor, accessibleMapIds)
 
   const visitedSet = new Set(
     (user?.visitedPlaces || []).map((id: any) => id.toString())
@@ -69,7 +71,7 @@ const getAllPlaces = catchAsync(async (req: Request, res: Response) => {
 
   const updatedData = result.data.map((place: any) => {
     const mapId = place.map?._id || place.map
-    const isLocked = !isPremium && mapId && lockedMapIds.includes(mapId.toString()) && place.type !== 'Business'
+    const isLocked = !isSuperOrAdmin && mapId && lockedMapIds.includes(mapId.toString()) && place.type !== 'Business'
     const isVisited = visitedSet.has(place._id.toString())
     if (isLocked) {
       // Keep teaser fields (name/media/category/location) for locked cards
@@ -109,9 +111,10 @@ const getPlaceById = catchAsync(async (req: Request, res: Response) => {
   const authorizationHeader = req.headers.authorization
   const user = await getUserFromToken(authorizationHeader)
 
-  const isPremium = !!(user && [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR].includes(user.role as any))
+  const isSuperOrAdmin = !!(user && [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(user.role as any))
+  const isEditor = !!(user && user.role === USER_ROLES.MAP_EDITOR)
 
-  if (!isPremium && (result.status === 'Draft' || result.status === 'Pending')) {
+  if (!isSuperOrAdmin && !isEditor && (result.status === 'Draft' || result.status === 'Pending')) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Place not found')
   }
 
@@ -119,8 +122,8 @@ const getPlaceById = catchAsync(async (req: Request, res: Response) => {
 
   const mapId = result.map?._id || result.map
   if (mapId) {
-    const isLocked = !accessibleMapIds.includes(mapId.toString())
-    if (!isPremium && isLocked) {
+    const isAccessible = accessibleMapIds.includes(mapId.toString())
+    if (!isSuperOrAdmin && !isAccessible) {
       if (result.type !== 'Business') {
         throw new ApiError(
           StatusCodes.FORBIDDEN,
@@ -131,8 +134,9 @@ const getPlaceById = catchAsync(async (req: Request, res: Response) => {
   }
 
   const placeObj = typeof (result as any).toObject === 'function' ? (result as any).toObject() : result
-  const isLocked = mapId && !accessibleMapIds.includes(mapId.toString()) && result.type !== 'Business'
-  placeObj.isLocked = !isPremium && !!isLocked
+  const isAccessible = mapId ? accessibleMapIds.includes(mapId.toString()) : true
+  const isLocked = !isSuperOrAdmin && !isAccessible && result.type !== 'Business'
+  placeObj.isLocked = !!isLocked
   placeObj.isVisited = !!(user && (user.visitedPlaces || []).some((vId: any) => vId.toString() === result._id.toString()))
 
   sendResponse(res, {

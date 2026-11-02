@@ -17,19 +17,19 @@ Dashboard:
 
 Users:
 
-1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped.
+1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped. - [SOLVED]
 
-2. The way I saw the profile in the mobile version was changed, I liked it more like it was before where the profile picture was given and the level, points and menu options (your routes, contributions, etc.) came out. It was just changing the "edit profile" button to "view profile" button.
+2. The way I saw the profile in the mobile version was changed, I liked it more like it was before where the profile picture was given and the level, points and menu options (your routes, contributions, etc.) came out. It was just changing the "edit profile" button to "view profile" button. - [SOLVED]
 
 3. On the landing page, put the photo of the "rewards and levels" section, would be the area where a photo has not yet been placed. The images are sent to you via Google Drive link.
 
-4. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map.
+4. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map. - [SOLVED]
 
 Users without buying a map:
 
-1. When you type a municipality in the search engine, all the pins of that municipality can leave as long as they are blocked. Currently, only businesses come out.
+1. When you type a municipality in the search engine, all the pins of that municipality can leave as long as they are blocked. Currently, only businesses come out. - [SOLVED]
 
-2. Users who are map editors, despite the fact that the places on the maps they have not bought are blocked, but it allows them to see the info of the places by clicking on the pins. Since they are editors, they can only see the places on the maps, which are editors.
+2. Users who are map editors, despite the fact that the places on the maps they have not bought are blocked, but it allows them to see the info of the places by clicking on the pins. Since they are editors, they can only see the places on the maps, which are editors. - [SOLVED]
 
 
 Users:

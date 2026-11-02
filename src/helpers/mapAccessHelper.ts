@@ -60,7 +60,11 @@ export const getAccessibleMapIds = async (user: any): Promise<string[]> => {
       )
       countryMapIds = countryMaps.map(m => m._id.toString())
     }
-    return Array.from(new Set([...assignedMapIds, ...countryMapIds]))
+    const freeMaps = await Map.find({ isPaid: false }, '_id')
+    const freeMapIds = freeMaps.map(m => m._id.toString())
+    const purchasedMapIds = (fullUser.purchasedMaps || []).map((id: any) => id.toString())
+
+    return Array.from(new Set([...assignedMapIds, ...countryMapIds, ...freeMapIds, ...purchasedMapIds]))
   }
 
   // Find all free maps
