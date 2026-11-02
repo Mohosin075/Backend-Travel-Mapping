@@ -18,6 +18,12 @@ router.get(
 )
 
 router.get(
+  '/entity-users',
+  auth(USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR),
+  StatsController.getEntityUsers,
+)
+
+router.get(
   '/reports',
   auth(USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN),
   StatsController.getReportsData,

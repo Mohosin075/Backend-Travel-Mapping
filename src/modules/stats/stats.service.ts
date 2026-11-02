@@ -1253,8 +1253,198 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   }
 }
 
+
+const getEntityUsers = async (type: string, id: string) => {
+  if (!id) return { users: [], totalCount: 0, guestCount: 0 }
+  
+  const normType = String(type || '').trim().toLowerCase()
+
+  if (normType === 'place' || normType === 'business') {
+    const visitedList = await Visited.find({
+      $or: [{ place: id }, { business: id }],
+    })
+      .populate('user', 'name email profile role level points')
+      .sort({ visitedAt: -1, createdAt: -1 })
+      .lean()
+
+    const viewList = await UsageView.find({
+      type: normType,
+      entityId: id,
+    })
+      .sort({ lastSeenAt: -1 })
+      .lean()
+
+    const authViewerIds = viewList
+      .filter((v: any) => v.viewerKey && v.viewerKey.startsWith('user:'))
+      .map((v: any) => v.viewerKey.replace('user:', ''))
+
+    const guestCount = viewList.filter(
+      (v: any) => !v.viewerKey || !v.viewerKey.startsWith('user:')
+    ).length
+
+    const userMap = new globalThis.Map<string, any>()
+
+    visitedList.forEach((v: any) => {
+      if (v.user && v.user._id) {
+        const uId = String(v.user._id)
+        if (!userMap.has(uId)) {
+          userMap.set(uId, {
+            _id: uId,
+            name: v.user.name || 'Anonymous User',
+            email: v.user.email,
+            profile: v.user.profile,
+            role: v.user.role,
+            level: v.user.level || 1,
+            points: v.user.points || 0,
+            date: v.visitedAt || v.createdAt,
+            action: 'Visited',
+          })
+        }
+      }
+    })
+
+    if (authViewerIds.length > 0) {
+      const viewerUsers = await User.find({ _id: { $in: authViewerIds } })
+        .select('name email profile role level points')
+        .lean()
+      const viewerUserMap = new globalThis.Map(viewerUsers.map(u => [String(u._id), u]))
+
+      viewList.forEach((v: any) => {
+        if (v.viewerKey && v.viewerKey.startsWith('user:')) {
+          const uId = v.viewerKey.replace('user:', '')
+          if (!userMap.has(uId) && viewerUserMap.has(uId)) {
+            const u = viewerUserMap.get(uId)!
+            userMap.set(uId, {
+              _id: uId,
+              name: u.name || 'Anonymous User',
+              email: u.email,
+              profile: u.profile,
+              role: u.role,
+              level: u.level || 1,
+              points: u.points || 0,
+              date: v.lastSeenAt || v.updatedAt,
+              action: 'Viewed',
+            })
+          }
+        }
+      })
+    }
+
+    const users = Array.from(userMap.values())
+    return {
+      users,
+      totalCount: users.length + guestCount,
+      guestCount,
+    }
+  }
+
+  if (normType === 'offer') {
+    const redemptions = await OfferRedemption.find({ offer: id })
+      .populate('user', 'name email profile role level points')
+      .sort({ redemptionTime: -1, createdAt: -1 })
+      .lean()
+
+    const users = redemptions
+      .filter((r: any) => r.user && r.user._id)
+      .map((r: any) => ({
+        _id: String(r.user._id),
+        name: r.user.name || 'Anonymous User',
+        email: r.user.email,
+        profile: r.user.profile,
+        role: r.user.role,
+        level: r.user.level || 1,
+        points: r.user.points || 0,
+        date: r.redemptionTime || r.createdAt,
+        action: 'Redeemed',
+      }))
+
+    return {
+      users,
+      totalCount: users.length,
+      guestCount: 0,
+    }
+  }
+
+  if (normType === 'map') {
+    const buyers = await User.find({
+      $or: [{ purchasedMaps: id }, { redeemedFreeMap: id }, { redeemedFreeMaps: id }],
+    })
+      .select('name email profile role level points updatedAt createdAt')
+      .lean()
+
+    const viewList = await UsageView.find({
+      type: 'map',
+      entityId: id,
+    })
+      .sort({ lastSeenAt: -1 })
+      .lean()
+
+    const authViewerIds = viewList
+      .filter((v: any) => v.viewerKey && v.viewerKey.startsWith('user:'))
+      .map((v: any) => v.viewerKey.replace('user:', ''))
+
+    const guestCount = viewList.filter(
+      (v: any) => !v.viewerKey || !v.viewerKey.startsWith('user:')
+    ).length
+
+    const userMap = new globalThis.Map<string, any>()
+
+    buyers.forEach((b: any) => {
+      const uId = String(b._id)
+      userMap.set(uId, {
+        _id: uId,
+        name: b.name || 'Anonymous User',
+        email: b.email,
+        profile: b.profile,
+        role: b.role,
+        level: b.level || 1,
+        points: b.points || 0,
+        date: b.updatedAt || b.createdAt,
+        action: 'Purchased/Unlocked',
+      })
+    })
+
+    if (authViewerIds.length > 0) {
+      const viewers = await User.find({ _id: { $in: authViewerIds } })
+        .select('name email profile role level points')
+        .lean()
+      const viewerUserMap = new globalThis.Map(viewers.map(u => [String(u._id), u]))
+
+      viewList.forEach((v: any) => {
+        if (v.viewerKey && v.viewerKey.startsWith('user:')) {
+          const uId = v.viewerKey.replace('user:', '')
+          if (!userMap.has(uId) && viewerUserMap.has(uId)) {
+            const u = viewerUserMap.get(uId)!
+            userMap.set(uId, {
+              _id: uId,
+              name: u.name || 'Anonymous User',
+              email: u.email,
+              profile: u.profile,
+              role: u.role,
+              level: u.level || 1,
+              points: u.points || 0,
+              date: v.lastSeenAt || v.updatedAt,
+              action: 'Viewed',
+            })
+          }
+        }
+      })
+    }
+
+    const users = Array.from(userMap.values())
+    return {
+      users,
+      totalCount: users.length + guestCount,
+      guestCount,
+    }
+  }
+
+  return { users: [], totalCount: 0, guestCount: 0 }
+}
+
 export const StatsService = {
   getDashboardData,
   getReportsData,
   searchReportEntities,
+  getEntityUsers,
 }

@@ -39,8 +39,25 @@ const searchReportEntities = catchAsync(async (req: Request, res: Response) => {
   })
 })
 
+
+const getEntityUsers = catchAsync(async (req: Request, res: Response) => {
+  const { type, id } = req.query
+  const result = await StatsService.getEntityUsers(
+    String(type || ''),
+    String(id || '')
+  )
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Entity users fetched successfully',
+    data: result,
+  })
+})
+
 export const StatsController = {
   getDashboardData,
   getReportsData,
   searchReportEntities,
+  getEntityUsers,
 }

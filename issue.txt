@@ -1,19 +1,19 @@
 The problem is still ongoing, but I understand the problem. If the map is in draft, it does not come out
 to the editor.
 
-Please, I would like the editor to be able to edit the maps even if it is in draft.
+Please, I would like the editor to be able to edit the maps even if it is in draft. - [SOLVED]
 
 Dashboard:
 
-1. Map editors are not allowed to edit maps if they are as drafts. It should allow them to edit them even if they are as a draft.
+1. Map editors are not allowed to edit maps if they are as drafts. It should allow them to edit them even if they are as a draft. - [SOLVED]
 
-2. On the users and roles page, when I enter a user's profile and get all the unlocked prizes, I would like them to come out in order and those I have not yet unlocked do not come out.
+2. On the users and roles page, when I enter a user's profile and get all the unlocked prizes, I would like them to come out in order and those I have not yet unlocked do not come out. - [SOLVED]
 
-3. On the user and role page, when I enter the profile of a user, in "use activity" put the option to see more and see less.
+3. On the user and role page, when I enter the profile of a user, in "use activity" put the option to see more and see less. - [SOLVED]
 
-4. On the reports and statistics page, in the "most viewed places" section where it says the amount, let me see who these users are. Same with redeemed offers and the most used maps.
+4. On the reports and statistics page, in the "most viewed places" section where it says the amount, let me see who these users are. Same with redeemed offers and the most used maps. - [SOLVED]
 
-5. Change the orange colors of the dahboard pages to the yellow of Roadtripeado to respect the branding of the brand.
+5. Change the orange colors of the dahboard pages to the yellow of Roadtripeado to respect the branding of the brand. - [SOLVED]
 
 Users:
 
