@@ -37,17 +37,29 @@ export const getAccessibleMapIds = async (user: any): Promise<string[]> => {
 
   // Map Editor — only assigned maps + maps in assigned countries
   if (fullUser && fullUser.role === USER_ROLES.MAP_EDITOR) {
-    const assignedMapIds = (fullUser.assignedMaps || []).map((id: any) =>
-      id.toString(),
-    )
+    const assignedMapIds = (fullUser.assignedMaps || [])
+      .map((id: any) => (id?._id ? id._id.toString() : id?.toString()))
+      .filter(Boolean)
     const assignedCountries: string[] = fullUser.assignedCountries || []
 
-    const countryMaps =
-      assignedCountries.length > 0
-        ? await Map.find({ country: { $in: assignedCountries } }, '_id')
-        : []
-
-    const countryMapIds = countryMaps.map(m => m._id.toString())
+    let countryMapIds: string[] = []
+    if (assignedCountries.length > 0) {
+      const countryRegexes = assignedCountries.map(
+        (c: string) => new RegExp('^' + c.trim() + '$', 'i')
+      )
+      const countryMaps = await Map.find(
+        {
+          $or: [
+            { country: { $in: countryRegexes } },
+            { 'name.en': { $in: countryRegexes } },
+            { 'name.es': { $in: countryRegexes } },
+            { name: { $in: countryRegexes } },
+          ],
+        },
+        '_id'
+      )
+      countryMapIds = countryMaps.map(m => m._id.toString())
+    }
     return Array.from(new Set([...assignedMapIds, ...countryMapIds]))
   }
 
@@ -91,9 +103,25 @@ export const verifyEditorEditAccess = async (user: any, mapId: string): Promise<
 
     const mapIdStr = map._id.toString()
     const mapCountry = map.country
+    const mapNameEn = typeof map.name === 'object' ? (map.name as any)?.en : map.name
+    const mapNameEs = typeof map.name === 'object' ? (map.name as any)?.es : map.name
 
-    const isAssignedMap = fullUser.assignedMaps?.some((id: any) => id.toString() === mapIdStr)
-    const isAssignedCountry = mapCountry && fullUser.assignedCountries?.includes(mapCountry)
+    const isAssignedMap = fullUser.assignedMaps?.some(
+      (id: any) => (id?._id ? id._id.toString() : id?.toString()) === mapIdStr
+    )
+
+    const matchesCountry = (val?: string | null) => {
+      if (!val || typeof val !== 'string') return false
+      const lower = val.trim().toLowerCase()
+      return fullUser.assignedCountries?.some(
+        (c: string) => typeof c === 'string' && c.trim().toLowerCase() === lower
+      )
+    }
+
+    const isAssignedCountry =
+      matchesCountry(mapCountry) ||
+      matchesCountry(mapNameEn) ||
+      matchesCountry(mapNameEs)
 
     if (isAssignedMap || isAssignedCountry) {
       return true

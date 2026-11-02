@@ -30,11 +30,17 @@ const getAllMaps = catchAsync(async (req: Request, res: Response) => {
   const user = await getUserFromToken(authorizationHeader)
   const accessibleMapIds = await getAccessibleMapIds(user)
 
-  const isAdmin = user && (user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.SUPER_ADMIN)
+  const isAdminOrEditor = !!(
+    user &&
+    [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MAP_EDITOR].includes(
+      user.role as any
+    )
+  )
 
   const query = { ...req.query }
-  if (!isAdmin) {
+  if (!isAdminOrEditor) {
     query.isActive = 'true'
+    query.status = 'Published'
   }
 
   const result = await MapService.getAllMaps(query)
@@ -63,6 +69,17 @@ const getMapById = catchAsync(async (req: Request, res: Response) => {
 
   const result = await MapService.getMapById(req.params.id)
   if (!result) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Map not found')
+  }
+
+  const isAdminOrEditor = !!(
+    user &&
+    [USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MAP_EDITOR].includes(
+      user.role as any
+    )
+  )
+
+  if (!isAdminOrEditor && (result.status === 'Draft' || result.isActive === false)) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Map not found')
   }
 
