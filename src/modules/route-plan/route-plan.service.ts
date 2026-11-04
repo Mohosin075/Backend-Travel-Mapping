@@ -8,6 +8,7 @@ import { Business } from '../business/business.model'
 import { User } from '../user/user.model'
 import { Map } from '../map/map.model'
 import { getCountryScope } from '../../helpers/countryScope'
+import { verifyEditorEditAccess } from '../../helpers/mapAccessHelper'
 
 /**
  * Normalizes stops before saving:
@@ -24,10 +25,12 @@ const normalizeStops = async (
 
   let userRole: string | undefined
   let purchasedMaps: string[] = []
+  let currentUser: any
 
   if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-    const userDoc = await User.findById(userId).select('role purchasedMaps')
+    const userDoc = await User.findById(userId).select('role purchasedMaps assignedMaps assignedCountries')
     if (userDoc) {
+      currentUser = userDoc
       userRole = userDoc.role
       purchasedMaps = (userDoc.purchasedMaps || []).map((m: any) => m.toString())
     }
@@ -56,6 +59,13 @@ const normalizeStops = async (
     if (placeDoc) {
       placeId = placeDoc._id
       type = placeDoc.type === 'Business' ? 'Business' : 'Place'
+
+      if (type === 'Place' && userRole === 'map_editor') {
+        if (!placeDoc.map) {
+          throw new ApiError(StatusCodes.FORBIDDEN, 'This place is not on an assigned map.')
+        }
+        await verifyEditorEditAccess(currentUser, String(placeDoc.map))
+      }
 
       // Restrict tourist attractions: non-business places require purchased or free map
       if (type === 'Place' && !isAdminOrEditor) {

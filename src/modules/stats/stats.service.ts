@@ -63,9 +63,9 @@ const getDashboardData = async (): Promise<IDashboardData> => {
   const realTotalSales = paymentsTotalAgg[0]?.total || 0
   const realMonthSales = paymentsMonthAgg[0]?.total || 0
 
-  // If real payments exist in production DB use them, otherwise compute from map data
-  const totalSales = realTotalSales > 0 ? realTotalSales : 12450
-  const thisMonthRevenue = realMonthSales > 0 ? realMonthSales : 3280
+  // Report actual persisted revenue, including zero-sales periods.
+  const totalSales = realTotalSales
+  const thisMonthRevenue = realMonthSales
   const taxesCollected = Math.round(totalSales * 0.10 * 100) / 100
 
   const recentActivity: IRecentActivity[] = []
@@ -381,7 +381,6 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
 
   const dateRange = query.timeFilter ? getDateRangeQuery(query.timeFilter) : null
   const hasEntity = isObjectId(String(query.entityId || '')) && !!query.entityType
-  const hasFilter = Boolean(countryParam || categoryParam || hasEntity || dateRange)
 
   // Construct filters for Maps, Places, Businesses, Offers
   const mapFilter: Record<string, any> = {}
@@ -420,7 +419,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   }
 
   // Selected place / business / map / offer (applied after defaults)
-  const { mapIds: entityMapIds, usagePlace } = await applySelectedEntity(
+  const { usagePlace } = await applySelectedEntity(
     query,
     mapFilter,
     placeFilter,
@@ -456,78 +455,14 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   const allowedOfferOids = allowedOfferDocs.map(o => o._id)
 
   // ==================== SALES & TAXES CALCULATION ====================
-  const realPaymentsCount = await Payment.countDocuments({ status: 'succeeded' })
-  let payments: any[] = []
-
-  if (realPaymentsCount > 0) {
-    const paymentFilter: Record<string, any> = { status: 'succeeded' }
-
-    if (dateRange) {
-      paymentFilter.createdAt = dateRange
-    }
-
-    if (allowedMapOids.length > 0) {
-      paymentFilter.mapId = { $in: allowedMapOids }
-    } else if (mapFilter._id || mapFilter.country) {
-      paymentFilter.mapId = { $in: [] }
-    }
-
-    payments = await Payment.find(paymentFilter).lean()
-  } else {
-    // Dynamic mock fallback based on actual database maps
-    const allMaps = await Map.find({}, 'name country createdAt').lean()
-    const mockPayments: any[] = []
-    const now = new Date()
-
-    if (allMaps.length > 0) {
-      allMaps.forEach((map, index) => {
-        for (let i = 0; i < 5; i++) {
-          const pDate = new Date(now.getFullYear(), now.getMonth() - i, 10 + ((index * 3) % 15))
-          mockPayments.push({
-            mapId: map._id.toString(),
-            amount: 25 + index * 12 + i * 6,
-            status: 'succeeded',
-            createdAt: pDate,
-            updatedAt: pDate,
-          })
-        }
-      })
-    } else {
-      for (let i = 0; i < 30; i++) {
-        const pDate = new Date(now.getFullYear(), now.getMonth() - (i % 6), 15)
-        mockPayments.push({
-          amount: 60 + i * 15,
-          status: 'succeeded',
-          createdAt: pDate,
-          updatedAt: pDate,
-        })
-      }
-    }
-
-    payments = mockPayments.filter(p => {
-      if (dateRange) {
-        const time = p.createdAt.getTime()
-        if (time < dateRange.$gte.getTime() || (dateRange.$lte && time > dateRange.$lte.getTime())) {
-          return false
-        }
-      }
-
-      if (countryRegex && p.mapId) {
-        const map = allMaps.find(m => m._id.toString() === p.mapId)
-        if (!map || !map.country || !countryRegex.test(map.country)) return false
-      }
-
-      if (categoryOid && p.mapId) {
-        if (!allowedMapIds.includes(p.mapId)) return false
-      }
-
-      if (query.entityType && query.entityId) {
-        if (!p.mapId || !entityMapIds.includes(String(p.mapId))) return false
-      }
-
-      return true
-    })
+  const paymentFilter: Record<string, any> = { status: 'succeeded' }
+  if (dateRange) paymentFilter.createdAt = dateRange
+  if (allowedMapOids.length > 0) {
+    paymentFilter.mapId = { $in: allowedMapOids }
+  } else if (mapFilter._id || mapFilter.country || categoryOid || hasEntity) {
+    paymentFilter.mapId = { $in: [] }
   }
+  const payments = await Payment.find(paymentFilter).lean()
 
   let totalSales = 0
   payments.forEach(p => {

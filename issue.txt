@@ -81,3 +81,13 @@ MOBILE VERSION:
 
 1. In the "burger" menu, remove the "View Profile" option.
 - solved (removed from mobile hamburger menu)
+
+CODEBASE AUDIT FOLLOW-UP (2026-11-05):
+See CODEBASE_AUDIT.md for evidence, fixes and validation scope.
+- fixed: duplicate business view tracking, mock revenue fallback, editor route-write assignment bypass, and incorrect references for new visits to Business-type Place records.
+- pending: enforce current place/map access on populated route read responses.
+- pending: hide private contributor identity and discoveredByName from other users in place list/detail responses.
+- pending: paginate active/registered report user lists beyond the current 100-user cap.
+- pending data review: existing malformed visit references and historically inflated business view counts.
+- needs reporting-rule clarification: taxesCollected is currently calculated as 10% of revenue, not recorded tax amounts.
+- pending integration verification: live browser/device checks and production deployment status.

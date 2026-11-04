@@ -88,7 +88,8 @@ const toggleVisited = async (
         [
           {
             user: userId,
-            ...(locationType === 'Business' ? { business: targetId } : { place: targetId }),
+            // A Place with type Business still references the places collection.
+            ...(isPlaceExist ? { place: targetId } : { business: targetId }),
             type: locationType,
             visitedAt: new Date(),
           },
