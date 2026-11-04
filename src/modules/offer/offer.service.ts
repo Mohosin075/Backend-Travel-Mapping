@@ -172,7 +172,7 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
     if (map && Types.ObjectId.isValid(map)) {
       mapOrConditions.push({ _id: new Types.ObjectId(map) })
     }
-    if (country) {
+    if (country && !map) {
       if (Types.ObjectId.isValid(country)) {
         mapOrConditions.push({ _id: new Types.ObjectId(country) })
       }
@@ -193,12 +193,12 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
     const mapIds = matchingMaps.map((m: any) => m._id)
     const mapCountries = matchingMaps.map((m: any) => m.country).filter(Boolean) as string[]
     const mapNames = matchingMaps
-      .map((m: any) => (typeof m.name === 'string' ? m.name : (m.name?.es || m.name?.en)))
+      .flatMap((m: any) => typeof m.name === 'string' ? [m.name] : [m.name?.es, m.name?.en])
       .filter(Boolean) as string[]
 
     const allCountryStrings = Array.from(
       new Set([
-        ...(country ? [country] : []),
+        ...(country && !map ? [country] : []),
         ...mapCountries,
         ...mapNames,
       ]),
