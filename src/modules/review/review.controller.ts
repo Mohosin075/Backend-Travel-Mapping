@@ -53,7 +53,7 @@ const getAllReviews = catchAsync(async (req: Request, res: Response) => {
     filter.status = 'Approved'
   }
 
-  const result = await ReviewService.getAllReviews(paginationOptions, filter)
+  const result = await ReviewService.getAllReviews(paginationOptions, filter, req.user)
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,
@@ -71,6 +71,7 @@ const getReviewsByPlace = catchAsync(async (req: Request, res: Response) => {
     placeId,
     paginationOptions,
     user?._id?.toString(),
+    user?.role,
   )
 
   sendResponse(res, {
@@ -89,6 +90,7 @@ const getReviewsByBusiness = catchAsync(async (req: Request, res: Response) => {
     businessId,
     paginationOptions,
     user?._id?.toString(),
+    user?.role,
   )
 
   sendResponse(res, {
@@ -113,7 +115,7 @@ const deleteReview = catchAsync(async (req: Request, res: Response) => {
 
 const getSingleReview = catchAsync(async (req: Request, res: Response) => {
   const { id } = req.params
-  const result = await ReviewService.getSingleReview(id)
+  const result = await ReviewService.getSingleReview(id, req.user)
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

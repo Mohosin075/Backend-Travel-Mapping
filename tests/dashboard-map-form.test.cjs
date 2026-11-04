@@ -117,7 +117,7 @@ test('unchecking always-open survives a parent render and saves the unchecked va
     '@/components/ui/checkbox': { Checkbox: 'checkbox' },
     sonner: { toast: { error() {} } },
   }, { window: { addEventListener() {}, removeEventListener() {} }, setTimeout: () => 1, clearTimeout() {} })
-  let initialData = { name: 'Place', category: 'category', description: 'Description', address: 'Address', schedules: 'Siempre abierto', images: ['https://example.test/image.jpg'], isNew: false }
+  let initialData = { name: 'Place', category: 'category', description: 'Description', address: 'Address', schedules: 'Siempre abierto', images: ['https://example.test/image.jpg'], isNew: false, difficulty: { en: 'medium' }, hikeTime: { es: '1,5 horas' }, entryCost: { en: '$10' }, atmosphere: { es: 'Tranquilo' } }
   const props = { categories: [], isSaving: false, onSave: async value => saved.push(value), onClose() {} }
   const render = () => {
     dirty = true; let loops = 0
@@ -136,6 +136,10 @@ test('unchecking always-open survives a parent render and saves the unchecked va
   await save.props.onClick()
   assert.equal(saved[0].schedules, '')
   assert.equal(saved[0].name, 'Unsaved place name')
+  assert.equal(saved[0].difficulty, 'Moderate')
+  assert.equal(saved[0].hikeTime, '1.5 hours')
+  assert.equal(saved[0].entryCost, '$10')
+  assert.equal(saved[0].atmosphere, 'Tranquilo')
 })
 
 test('view tracking sends app token even without an access-token cookie, including separate accounts', () => {

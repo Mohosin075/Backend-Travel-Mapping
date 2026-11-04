@@ -442,12 +442,12 @@ const getPublicProfile = async (userId: string, requester?: any) => {
   const isOwner = Boolean(requesterId && String(requesterId) === String(userId))
   const isStaff = Boolean(
     requester &&
-      [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR].includes(
+      [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(
         requester.role,
       ),
   )
 
-  if (user.settings?.profileStatus === 'private' && !isOwner && !isStaff) {
+  if (['private', 'anonymous'].includes(user.settings?.profileStatus || '') && !isOwner && !isStaff) {
     throw new ApiError(StatusCodes.FORBIDDEN, 'This profile is private.')
   }
 

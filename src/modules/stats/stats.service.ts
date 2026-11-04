@@ -964,9 +964,9 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     OfferRedemption.distinct('user', redemptionTimeMatch(oneDayAgo)),
     OfferRedemption.distinct('user', redemptionTimeMatch(sevenDaysAgo)),
     OfferRedemption.distinct('user', redemptionTimeMatch(thirtyDaysAgo)),
-    User.distinct('_id', { updatedAt: { $gte: oneDayAgo }, ...userCountFilter }),
-    User.distinct('_id', { updatedAt: { $gte: sevenDaysAgo }, ...userCountFilter }),
-    User.distinct('_id', { updatedAt: { $gte: thirtyDaysAgo }, ...userCountFilter }),
+    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { $or: [{ lastActiveAt: { $gte: oneDayAgo } }, { lastActiveAt: { $exists: false }, updatedAt: { $gte: oneDayAgo } }], ...userCountFilter }),
+    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { $or: [{ lastActiveAt: { $gte: sevenDaysAgo } }, { lastActiveAt: { $exists: false }, updatedAt: { $gte: sevenDaysAgo } }], ...userCountFilter }),
+    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { $or: [{ lastActiveAt: { $gte: thirtyDaysAgo } }, { lastActiveAt: { $exists: false }, updatedAt: { $gte: thirtyDaysAgo } }], ...userCountFilter }),
     Visited.countDocuments(visitedFilter),
     OfferRedemption.countDocuments(redemptionFilter),
     Review.countDocuments(reviewFilter),
@@ -1098,27 +1098,32 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   let finalActiveWeek = activeWeekSet.size
   let finalActiveMonth = activeMonthSet.size
 
-  // Fallback estimation for development environment if no live usage yet and no filters applied
-  if (!hasFilter && finalActiveMonth === 0 && totalRegisteredUsers > 0) {
-    finalActiveMonth = Math.min(totalRegisteredUsers, Math.max(1, Math.round(totalRegisteredUsers * 0.75)))
-    finalActiveWeek = Math.min(finalActiveMonth, Math.max(1, Math.round(finalActiveMonth * 0.6)))
-    finalActiveToday = Math.min(finalActiveWeek, Math.max(1, Math.round(finalActiveWeek * 0.4)))
-  }
-
   // Query active users to enable profile inspection on statistics page
   const todayUserIds = new Set<string>()
+  usageKeysToday.forEach((key: any) => {
+    const id = String(key).startsWith('user:') ? String(key).slice(5) : ''
+    if (mongoose.Types.ObjectId.isValid(id)) todayUserIds.add(id)
+  })
   visitedUsersToday.forEach((u: any) => u && todayUserIds.add(String(u)))
   reviewUsersToday.forEach((u: any) => u && todayUserIds.add(String(u)))
   redemptionUsersToday.forEach((u: any) => u && todayUserIds.add(String(u)))
   updatedUsersToday.forEach((u: any) => u && todayUserIds.add(String(u)))
 
   const weekUserIds = new Set<string>()
+  usageKeysWeek.forEach((key: any) => {
+    const id = String(key).startsWith('user:') ? String(key).slice(5) : ''
+    if (mongoose.Types.ObjectId.isValid(id)) weekUserIds.add(id)
+  })
   visitedUsersWeek.forEach((u: any) => u && weekUserIds.add(String(u)))
   reviewUsersWeek.forEach((u: any) => u && weekUserIds.add(String(u)))
   redemptionUsersWeek.forEach((u: any) => u && weekUserIds.add(String(u)))
   updatedUsersWeek.forEach((u: any) => u && weekUserIds.add(String(u)))
 
   const monthUserIds = new Set<string>()
+  usageKeysMonth.forEach((key: any) => {
+    const id = String(key).startsWith('user:') ? String(key).slice(5) : ''
+    if (mongoose.Types.ObjectId.isValid(id)) monthUserIds.add(id)
+  })
   visitedUsersMonth.forEach((u: any) => u && monthUserIds.add(String(u)))
   reviewUsersMonth.forEach((u: any) => u && monthUserIds.add(String(u)))
   redemptionUsersMonth.forEach((u: any) => u && monthUserIds.add(String(u)))
@@ -1162,41 +1167,18 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   let activeUsersDocs: any[] = []
   if (validObjectIds.length > 0) {
     activeUsersDocs = await User.find({ _id: { $in: validObjectIds } })
-      .select('name email profile role level points updatedAt createdAt')
-      .sort({ updatedAt: -1 })
+      .select('name email profile role level points lastActiveAt updatedAt createdAt')
+      .sort({ lastActiveAt: -1, updatedAt: -1 })
       .limit(100)
       .lean()
   }
 
   // Also query general registered users for "all" tab
   const allUsersDocs = await User.find(countryRegex ? { 'address.country': countryRegex } : {})
-    .select('name email profile role level points updatedAt createdAt')
+    .select('name email profile role level points lastActiveAt updatedAt createdAt')
     .sort({ updatedAt: -1, createdAt: -1 })
     .limit(100)
     .lean()
-
-  if (activeUsersDocs.length === 0 && allUsersDocs.length > 0) {
-    const todayCount = Math.max(1, Math.min(allUsersDocs.length, finalActiveToday))
-    const weekCount = Math.max(todayCount, Math.min(allUsersDocs.length, finalActiveWeek))
-    const monthCount = Math.max(weekCount, Math.min(allUsersDocs.length, finalActiveMonth))
-
-    allUsersDocs.slice(0, todayCount).forEach((u) => {
-      const id = String(u._id)
-      todayUserIds.add(id)
-      weekUserIds.add(id)
-      monthUserIds.add(id)
-    })
-    allUsersDocs.slice(0, weekCount).forEach((u) => {
-      const id = String(u._id)
-      weekUserIds.add(id)
-      monthUserIds.add(id)
-    })
-    allUsersDocs.slice(0, monthCount).forEach((u) => {
-      const id = String(u._id)
-      monthUserIds.add(id)
-    })
-    activeUsersDocs = allUsersDocs.slice(0, monthCount)
-  }
 
   const formatUserSummary = (u: any): IActiveUserSummary => {
     const id = String(u._id)
@@ -1216,7 +1198,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
       role: u.role || 'user',
       level: u.level || 0,
       points: u.points || 0,
-      lastActive: u.updatedAt || u.createdAt || new Date(),
+      lastActive: u.lastActiveAt || u.updatedAt || u.createdAt || new Date(),
       isActiveToday: isToday,
       isActiveWeek: isWeek,
       isActiveMonth: isMonth,

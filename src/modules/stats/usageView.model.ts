@@ -10,6 +10,7 @@ const UsageViewSchema = new Schema(
     },
     entityId: { type: String, required: true },
     lastSeenAt: { type: Date, required: true, default: Date.now },
+    lastCountedAt: { type: Date },
   },
   { timestamps: true },
 )

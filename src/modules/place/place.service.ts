@@ -685,7 +685,10 @@ const getAllPlaces = async (
     deduplicatedPlaces.push(p)
   }
 
-  let combined = [...deduplicatedPlaces, ...deduplicatedBusinesses]
+  // Management must show each stored record, including records sharing a name/pin.
+  let combined = isAdminOrEditor
+    ? [...formattedPlaces, ...formattedBusinesses]
+    : [...deduplicatedPlaces, ...deduplicatedBusinesses]
 
   // Filter and sort combined results
   if (searchTerm) {
@@ -724,8 +727,9 @@ const getAllPlaces = async (
       let score = 0
       const nameEn = stripAccents(p.name?.en || (typeof p.name === 'string' ? p.name : ''))
       const nameEs = stripAccents(p.name?.es || (typeof p.name === 'string' ? p.name : ''))
-      const addrEn = stripAccents(p.address?.en || p.address || p.location?.address || p.location?.city || '')
-      const addrEs = stripAccents(p.address?.es || p.address || p.location?.address || p.location?.city || '')
+      const address = p.address || p.location?.address || p.location?.city || ''
+      const addrEn = stripAccents(typeof address === 'string' ? address : address.en || address.es || '')
+      const addrEs = stripAccents(typeof address === 'string' ? address : address.es || address.en || '')
 
       const nameText = `${nameEn} ${nameEs}`.trim()
       const addrText = `${addrEn} ${addrEs}`.trim()

@@ -482,7 +482,9 @@ const getDiscoveryData = async (
     deduplicatedPlaces.push(p)
   }
 
-  let result = [...deduplicatedPlaces, ...deduplicatedBusinesses]
+  let result = isAdminOrEditor
+    ? [...formattedPlaces, ...formattedBusinesses]
+    : [...deduplicatedPlaces, ...deduplicatedBusinesses]
 
   // If there's a searchTerm, we might want to sort by relevance or alphabetically
   if (query.searchTerm) {

@@ -40,6 +40,7 @@ export type Point = {
 
 // ------------------ USER TYPE ------------------
 export interface IUser {
+  lastActiveAt?: Date
   _id: Types.ObjectId
   name?: string
   email?: string

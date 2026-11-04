@@ -1,4 +1,5 @@
 import { StatusCodes } from 'http-status-codes'
+import { sanitizeReviewIdentity } from '../../helpers/profilePrivacy'
 import ApiError from '../../errors/ApiError'
 import { IReview } from './review.interface'
 import { Review } from './review.model'
@@ -148,13 +149,14 @@ const createReview = async (user: JwtPayload, payload: IReview) => {
 const getAllReviews = async (
   paginationOptions: IPaginationOptions,
   filter: any = {},
+  requester?: any,
 ) => {
   const { page, limit, skip, sortBy, sortOrder } =
     paginationHelper.calculatePagination(paginationOptions)
 
   const [result, total] = await Promise.all([
     Review.find(filter)
-      .populate('reviewer', 'name profile level purchasedMaps')
+      .populate('reviewer', 'name profile level purchasedMaps settings.profileStatus')
       .populate({
         path: 'placeId',
         select: 'name media map address category country',
@@ -174,7 +176,7 @@ const getAllReviews = async (
       total,
       totalPages: Math.ceil(total / limit),
     },
-    data: result,
+    data: result.map(review => sanitizeReviewIdentity(review, requester)),
   }
 }
 
@@ -182,6 +184,7 @@ const getReviewsByPlace = async (
   placeId: string,
   paginationOptions: IPaginationOptions,
   userId?: string,
+  userRole?: string,
 ) => {
   // If this ID is a Business, automatically query by businessId
   const isBusiness = await Business.exists({ _id: placeId })
@@ -194,13 +197,14 @@ const getReviewsByPlace = async (
       ...(userId ? [{ reviewer: userId }] : []),
     ],
   }
-  return await getAllReviews(paginationOptions, filter)
+  return await getAllReviews(paginationOptions, filter, { authId: userId, role: userRole })
 }
 
 const getReviewsByBusiness = async (
   businessId: string,
   paginationOptions: IPaginationOptions,
   userId?: string,
+  userRole?: string,
 ) => {
   // If this ID is a Place, automatically query by placeId
   const isPlace = await Place.exists({ _id: businessId })
@@ -213,7 +217,7 @@ const getReviewsByBusiness = async (
       ...(userId ? [{ reviewer: userId }] : []),
     ],
   }
-  return await getAllReviews(paginationOptions, filter)
+  return await getAllReviews(paginationOptions, filter, { authId: userId, role: userRole })
 }
 
 const updateReview = async (
@@ -373,19 +377,19 @@ const deleteReview = async (user: JwtPayload, id: string) => {
   }
 }
 
-const getSingleReview = async (id: string) => {
-  const result = await Review.findById(id).populate('reviewer', 'name profile')
+const getSingleReview = async (id: string, requester?: any) => {
+  const result = await Review.findById(id).populate('reviewer', 'name profile settings.profileStatus')
   if (!result) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Review not found.')
   }
-  return result
+  return sanitizeReviewIdentity(result, requester)
 }
 
 const getMyReviews = async (
   user: JwtPayload,
   paginationOptions: IPaginationOptions,
 ) => {
-  return await getAllReviews(paginationOptions, { reviewer: user.authId })
+  return await getAllReviews(paginationOptions, { reviewer: user.authId }, user)
 }
 
 const approveReview = async (id: string) => {

@@ -111,7 +111,13 @@ export const recordUniqueUsage = async (
     .lean()
 
   const latest = existing[0]
-  if (latest && latest.lastSeenAt && latest.lastSeenAt >= cutoff) {
+  const lastCountedAt = latest?.lastCountedAt || latest?.lastSeenAt
+  if (latest && lastCountedAt && lastCountedAt >= cutoff) {
+    // Refresh presence on every visit without incrementing the daily view counter.
+    if (!latest.lastCountedAt) {
+      await UsageView.updateOne({ _id: latest._id, lastCountedAt: { $exists: false } }, { $set: { lastCountedAt } })
+    }
+    await UsageView.updateOne({ _id: latest._id }, { $max: { lastSeenAt: now } })
     await syncViewerKeys(keys, type, entityId, latest.lastSeenAt)
     return
   }
@@ -119,8 +125,8 @@ export const recordUniqueUsage = async (
   try {
     if (latest) {
       const updated = await UsageView.findOneAndUpdate(
-        { _id: latest._id, lastSeenAt: { $lte: cutoff } },
-        { $set: { lastSeenAt: now } },
+        { _id: latest._id, $or: [{ lastCountedAt: { $lte: cutoff } }, { lastCountedAt: { $exists: false }, lastSeenAt: { $lte: cutoff } }] },
+        { $set: { lastSeenAt: now, lastCountedAt: now } },
         { new: true },
       )
       if (!updated) return
@@ -130,6 +136,7 @@ export const recordUniqueUsage = async (
         type,
         entityId,
         lastSeenAt: now,
+        lastCountedAt: now,
       })
     }
   } catch (error: any) {

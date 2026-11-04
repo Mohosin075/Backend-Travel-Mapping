@@ -7,6 +7,7 @@ import { InterestCategory, USER_ROLES, USER_STATUS } from '../../enum/user'
 const UserSchema = new Schema<IUser, UserModel>(
   {
     name: { type: String, trim: true },
+    lastActiveAt: { type: Date },
     email: { type: String, unique: true, lowercase: true, required: true },
     profile: { type: String, default: '' },
     phone: { type: String },

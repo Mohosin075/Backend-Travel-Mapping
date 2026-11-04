@@ -55,12 +55,16 @@ Dashboard: 1. On the reports and statistics page, in the "most viewed places" se
 - solved (2-second delay verified by automated tests; live device verification pending)
 
 4. On the reports and statistics page, data regarding active users or those who have viewed specific places is not updated in real-time; for instance, I do not appear in the statistics even when I am logged in. Additionally, for users who have set their profiles to "anonymous," this should only apply to other users—not to administrators. 
+- solved (authenticated activity heartbeat, live refresh with 30-second polling fallback, and admin identity visibility; automated tests passed; live verification pending)
 
 5. On the "places" page, when editing a place saved as a draft, the "save as draft" button is missing, forcing the user to publish it instead. While the "save as draft" button appears when editing via the map view, it is absent in the list view. 
+- solved (list editor preserves Draft status and offers Save as Draft; automated regression passed)
 
 6. On the "places" page map, when editing a place, certain fields—such as "difficulty," "hiking time," etc.—do not display the previously selected information upon re-entering the edit screen. This creates the impression that the data was never entered or saved. For example, check the "Two Waters Waterfall" (Cascada Two Waters) in the Costa Rica map; although its difficulty is set to "medium," this selection is not visible when opening the entry to edit it again. 
+- solved (translated difficulty, hiking time, entry cost and atmosphere restored in edit forms; automated regression passed; named production record not accessed)
 
 7. The search function on the "places" page is not working correctly; when I type "La Piedra Escrita," the intended location does not appear, even though it is correctly saved in the system. 
+- solved (dashboard records no longer hidden by public deduplication or pending-status filtering; server-side map search added; La Piedra Escrita regression passed)
 
 Users: 
 
