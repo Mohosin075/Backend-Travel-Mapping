@@ -1282,6 +1282,7 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     const authViewerIds = viewList
       .filter((v: any) => v.viewerKey && v.viewerKey.startsWith('user:'))
       .map((v: any) => v.viewerKey.replace('user:', ''))
+      .filter((viewerId: string) => mongoose.isValidObjectId(viewerId))
 
     const guestCount = viewList.filter(
       (v: any) => !v.viewerKey || !v.viewerKey.startsWith('user:')
@@ -1319,7 +1320,8 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     const users = Array.from(userMap.values())
     return {
       users,
-      totalCount: users.length + guestCount,
+      totalCount: viewList.length,
+      unavailableCount: new Set(viewList.filter((v: any) => v.viewerKey?.startsWith('user:')).map((v: any) => v.viewerKey)).size - users.length,
       guestCount,
     }
   }
@@ -1368,6 +1370,7 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     const authViewerIds = viewList
       .filter((v: any) => v.viewerKey && v.viewerKey.startsWith('user:'))
       .map((v: any) => v.viewerKey.replace('user:', ''))
+      .filter((viewerId: string) => mongoose.isValidObjectId(viewerId))
 
     const guestCount = viewList.filter(
       (v: any) => !v.viewerKey || !v.viewerKey.startsWith('user:')
@@ -1405,7 +1408,8 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     const users = Array.from(userMap.values())
     return {
       users,
-      totalCount: users.length + guestCount,
+      totalCount: viewList.length,
+      unavailableCount: new Set(viewList.filter((v: any) => v.viewerKey?.startsWith('user:')).map((v: any) => v.viewerKey)).size - users.length,
       guestCount,
     }
   }

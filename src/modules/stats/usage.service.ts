@@ -49,8 +49,10 @@ const viewerKeys = (
   socket: Socket,
   payload?: { visitorId?: string; token?: string },
 ): string[] => {
-  const authId =
-    readAuthId(payload?.token) || readAuthId(handshakeToken(socket))
+  // An explicit guest/expired token must not reuse another account's old handshake.
+  const authId = payload?.token !== undefined
+    ? readAuthId(payload.token)
+    : readAuthId(handshakeToken(socket))
   if (authId) {
     // Authenticated users are tracked strictly by user ID so distinct accounts
     // on the same device/browser are tracked independently.

@@ -85,6 +85,19 @@ test('invalid report ids and types fail before querying MongoDB', async () => {
   assert.equal(queries.length, 0)
 })
 
+test('viewer lists include every recorded account and tolerate malformed/deleted accounts', async () => {
+  const viewers = Array.from({ length: 250 }, (_, index) => ({ _id: (index + 1).toString(16).padStart(24, '0'), name: `Viewer ${index}` }))
+  const rows = viewers.map(user => ({ viewerKey: `user:${user._id}` }))
+  rows.push({ viewerKey: 'user:invalid' }, { viewerKey: 'user:ffffffffffffffffffffffff' }, { viewerKey: 'guest:visitor' })
+  const { service, queries } = stats(rows, viewers)
+  const result = await service.getEntityUsers('place', entityId)
+  assert.equal(result.users.length, 250)
+  assert.equal(result.users[249].name, 'Viewer 249')
+  assert.equal(result.guestCount, 1)
+  assert.equal(result.unavailableCount, 2)
+  assert.equal(result.totalCount, 253)
+})
+
 test('managed map list scopes assignments before pagination without excluding drafts', async () => {
   let assignmentQuery, listQuery, response
   const { MapController } = load('src/modules/map/map.controller.ts', {

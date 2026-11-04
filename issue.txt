@@ -31,23 +31,28 @@ GENERAL VERSION:
 Users:
 
 1. If I have selected the map of Costa Rica, when I go to the "offers" page, you can see the offers from other countries. Only the offers of the corresponding country should be seen, such as on the "places" and "maps" page.
-
+- solved
 2. On the "My Routes" page, when the user is editing the route and "save route," it should be saved and directed to the non-editable page.
-
+- solved
 3. On the "my routes" page, when you enter the editable and non-editable path, you can not see the "x" to exit the page, since it is covered with the main menu. It also happens when you add a new stop.
-
+- solved
 Dashboard:
 
 4. On the map of the places page, it does not let me drag the pins to change their location.
+- solved (code and automated tests; live mouse/touch verification pending)
 
 5. I need that when editing a place, the checkmark of the "always open" option is selected or deselected depending on what has been previously granted.
+- solved
 
 
-GENERAL VERSION: Dashboard: 1. On the reports and statistics page, in the "most viewed places" section, the view count does not allow me to see the full list of users who have viewed those places. 
+Dashboard: 1. On the reports and statistics page, in the "most viewed places" section, the view count does not allow me to see the full list of users who have viewed those places. 
+- solved (full list of stored identifiable viewers; identities of anonymous or untracked historical views cannot be recovered)
 
 2. Replace the orange colors throughout the dashboard pages with the "Roadtripeado" yellow to ensure brand consistency. 
+- solved
 
 3. On the map within the "places" page, implement a 2-second press-and-hold delay before dragging is enabled (reverting to the previous behavior). 
+- solved (2-second delay verified by automated tests; live device verification pending)
 
 4. On the reports and statistics page, data regarding active users or those who have viewed specific places is not updated in real-time; for instance, I do not appear in the statistics even when I am logged in. Additionally, for users who have set their profiles to "anonymous," this should only apply to other users—not to administrators. 
 
