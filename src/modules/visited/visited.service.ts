@@ -5,7 +5,7 @@ import { Visited } from './visited.model'
 import { Place } from '../place/place.model'
 import { Business } from '../business/business.model'
 import { User } from '../user/user.model'
-import { LevelConfigServices } from '../award/levelConfig.service'
+import { getCountryScope } from '../../helpers/countryScope'
 
 interface IToggleVisitedPayload {
   placeId?: string
@@ -64,20 +64,10 @@ const toggleVisited = async (
         )
       }
 
-      const pointsToDeduct = Number(isPlaceExist?.pointsAwarded) > 0 ? Number(isPlaceExist?.pointsAwarded) : 10
-      const userDoc = await User.findById(userId).session(session)
-      const currentPoints = Number(userDoc?.points) || 0
-      const newPoints = Math.max(0, currentPoints - pointsToDeduct)
-      const levelInfo = await LevelConfigServices.getDynamicUserLevel(
-        newPoints,
-        userDoc?.totalReviewsApproved || 0
-      )
-
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         {
           $pull: { visitedPlaces: targetId },
-          $set: { points: newPoints, level: levelInfo.levelNumber },
         },
         { new: true, session }
       )
@@ -135,20 +125,10 @@ const toggleVisited = async (
         }
       }
 
-      const pointsToAdd = Number(isPlaceExist?.pointsAwarded) > 0 ? Number(isPlaceExist?.pointsAwarded) : 10
-      const userDoc = await User.findById(userId).session(session)
-      const currentPoints = Number(userDoc?.points) || 0
-      const newPoints = currentPoints + pointsToAdd
-      const levelInfo = await LevelConfigServices.getDynamicUserLevel(
-        newPoints,
-        userDoc?.totalReviewsApproved || 0
-      )
-
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         {
           $addToSet: { visitedPlaces: targetId },
-          $set: { points: newPoints, level: levelInfo.levelNumber },
         },
         { new: true, session }
       )
@@ -229,13 +209,14 @@ const getMyVisitedPlaces = async (
               media: 1,
               type: 1,
               address: 1,
+              country: 1,
               location: 1,
               rating: 1,
               totalReview: 1,
               entryCost: 1,
               difficulty: 1,
               category: { name: 1, color: 1, icon: 1 },
-              map: { name: 1, country: 1 },
+              map: { _id: 1, name: 1, country: 1 },
             },
           },
         ],
@@ -285,6 +266,19 @@ const getMyVisitedPlaces = async (
       },
     },
   ]
+
+  if (typeof query.country === 'string' && query.country.trim()) {
+    const { countries, mapIds } = await getCountryScope(query.country)
+    pipeline.push({ $match: { $or: [
+      { 'place.country': { $in: countries } },
+      { 'place.map._id': { $in: mapIds } },
+      { 'place.map.country': { $in: countries } },
+      { 'place.map.name': { $in: countries } },
+      { 'place.map.name.en': { $in: countries } },
+      { 'place.map.name.es': { $in: countries } },
+      { 'business.location.country': { $in: countries } },
+    ] } })
+  }
 
   // Optional search by name or address across place/business
   if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim()) {

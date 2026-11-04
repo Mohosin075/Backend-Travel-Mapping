@@ -7,6 +7,7 @@ import { Place } from '../place/place.model'
 import { Business } from '../business/business.model'
 import { User } from '../user/user.model'
 import { Map } from '../map/map.model'
+import { getCountryScope } from '../../helpers/countryScope'
 
 /**
  * Normalizes stops before saving:
@@ -163,6 +164,19 @@ const getMyRoutePlans = async (
 
   const filter: Record<string, any> = {
     user: new mongoose.Types.ObjectId(userId),
+  }
+
+  if (typeof query.country === 'string' && query.country.trim()) {
+    const { countries, mapIds } = await getCountryScope(query.country)
+    const [places, businesses] = await Promise.all([
+      Place.find({ $or: [{ country: { $in: countries } }, { map: { $in: mapIds } }] }).select('_id').lean(),
+      Business.find({ 'location.country': { $in: countries } }).select('_id').lean(),
+    ])
+    // A route crossing countries appears for each country containing one of its stops.
+    filter.$or = [
+      { 'stops.place': { $in: places.map(place => place._id) } },
+      { 'stops.business': { $in: businesses.map(business => business._id) } },
+    ]
   }
 
   if (searchTerm && typeof searchTerm === 'string') {

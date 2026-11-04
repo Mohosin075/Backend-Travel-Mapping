@@ -69,11 +69,15 @@ Dashboard: 1. On the reports and statistics page, in the "most viewed places" se
 Users: 
 
 1. On the "My Routes" page, allow users to switch countries—similar to the "Places, Maps, Offers" page—so that the routes for the selected country are displayed. 
+- solved (saved country selection, selected country first, and server-side route filtering before pagination; routes spanning countries appear for each matching country)
 
 2. On the "Visited Places" page, add a filter by country, ensuring the selected country appears first (consistent with the "Places, Offers, Maps" page). 
+- solved (shared country selector, selected country first, and place/business country filtering before pagination)
 
 3. Users currently earn 10 points for marking places as "visited"; remove the option to earn points for this action. 
+- solved (mark/unmark no longer changes points or levels; existing earned points preserved; EN/ES rewards copy updated)
 
 MOBILE VERSION: 
 
 1. In the "burger" menu, remove the "View Profile" option.
+- solved (removed from mobile hamburger menu)
