@@ -25,6 +25,33 @@ const createMap = catchAsync(async (req: Request, res: Response) => {
   })
 })
 
+const getManagedMaps = catchAsync(async (req: Request, res: Response) => {
+  const user = await getUserFromToken(req.headers.authorization)
+  if (!user) throw new ApiError(StatusCodes.UNAUTHORIZED, 'You are not authorized.')
+  if (![USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MAP_EDITOR].includes(user.role)) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You do not have permission to manage maps.')
+  }
+  const query: Record<string, unknown> = { ...req.query }
+  if (user.role === USER_ROLES.MAP_EDITOR) {
+    const countries = (user.assignedCountries || []).filter(country => country.trim()).map(country =>
+      new RegExp('^' + country.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'),
+    )
+    const assigned = await Map.find({ $or: [
+      { _id: { $in: user.assignedMaps || [] } },
+      { country: { $in: countries } },
+      { 'name.en': { $in: countries } },
+      { 'name.es': { $in: countries } },
+      { name: { $in: countries } },
+    ] }).select('_id').lean()
+    query._id = { $in: assigned.map(map => map._id) }
+  }
+  const result = await MapService.getAllMaps(query)
+  sendResponse(res, {
+    statusCode: StatusCodes.OK, success: true, message: 'Managed maps retrieved successfully',
+    meta: result.meta, data: localizeDocument(result.data, req.lang, mapFields),
+  })
+})
+
 const getAllMaps = catchAsync(async (req: Request, res: Response) => {
   const authorizationHeader = req.headers.authorization
   const user = await getUserFromToken(authorizationHeader)
@@ -227,6 +254,7 @@ const getDiscoveryData = catchAsync(async (req: Request, res: Response) => {
 })
 
 export const MapController = {
+  getManagedMaps,
   createMap,
   getAllMaps,
   getMapById,

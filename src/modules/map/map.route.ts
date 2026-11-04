@@ -24,6 +24,8 @@ router.get(
   MapController.getPurchasedMaps
 )
 
+router.get('/manage', auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MAP_EDITOR), MapController.getManagedMaps)
+
 router.get('/available-countries', MapController.getAvailableCountries)
 router.get('/discovery', MapController.getDiscoveryData)
 router.post('/:id/view', MapController.incrementViewCount)

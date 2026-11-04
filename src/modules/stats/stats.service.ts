@@ -1,3 +1,5 @@
+import ApiError from '../../errors/ApiError'
+import { StatusCodes } from 'http-status-codes'
 import { Map } from '../map/map.model'
 import { Place } from '../place/place.model'
 import { Offer } from '../offer/offer.model'
@@ -315,10 +317,11 @@ const applySelectedEntity = async (
       mapIds: [],
       usagePlace: business
         ? {
-          id: String(business._id),
-          name: localizeField(business.name),
-          count: (business as any).viewCount || 0,
-        }
+            entityType: 'business',
+            id: String(business._id),
+            name: localizeField(business.name),
+            count: (business as any).viewCount || 0,
+          }
         : undefined,
     }
   }
@@ -351,6 +354,7 @@ const applySelectedEntity = async (
         mapIds: [],
         usagePlace: business
           ? {
+            entityType: 'business',
             id: String(business._id),
             name: localizeField(business.name),
             count: (business as any).viewCount || 0,
@@ -685,6 +689,11 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     }))
   }
   if (usagePlace) {
+    if (dateRange && usagePlace.entityType === 'business') {
+      usagePlace.count = await UsageView.countDocuments({
+        type: 'business', entityId: usagePlace.id, lastSeenAt: dateRange,
+      })
+    }
     mostOpenedPlaces = [usagePlace]
   }
 
@@ -1254,22 +1263,18 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
 }
 
 
-const getEntityUsers = async (type: string, id: string) => {
-  if (!id) return { users: [], totalCount: 0, guestCount: 0 }
-  
+const getEntityUsers = async (type: string, id: string, timeFilter?: string) => {
+  if (!mongoose.isValidObjectId(id) || !['place', 'business', 'map', 'offer'].includes(type)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid report entity')
+  }
+  const dateRange = timeFilter ? getDateRangeQuery(timeFilter) : null
   const normType = String(type || '').trim().toLowerCase()
 
   if (normType === 'place' || normType === 'business') {
-    const visitedList = await Visited.find({
-      $or: [{ place: id }, { business: id }],
-    })
-      .populate('user', 'name email profile role level points')
-      .sort({ visitedAt: -1, createdAt: -1 })
-      .lean()
-
     const viewList = await UsageView.find({
       type: normType,
       entityId: id,
+      ...(dateRange ? { lastSeenAt: dateRange } : {}),
     })
       .sort({ lastSeenAt: -1 })
       .lean()
@@ -1283,25 +1288,6 @@ const getEntityUsers = async (type: string, id: string) => {
     ).length
 
     const userMap = new globalThis.Map<string, any>()
-
-    visitedList.forEach((v: any) => {
-      if (v.user && v.user._id) {
-        const uId = String(v.user._id)
-        if (!userMap.has(uId)) {
-          userMap.set(uId, {
-            _id: uId,
-            name: v.user.name || 'Anonymous User',
-            email: v.user.email,
-            profile: v.user.profile,
-            role: v.user.role,
-            level: v.user.level || 1,
-            points: v.user.points || 0,
-            date: v.visitedAt || v.createdAt,
-            action: 'Visited',
-          })
-        }
-      }
-    })
 
     if (authViewerIds.length > 0) {
       const viewerUsers = await User.find({ _id: { $in: authViewerIds } })
@@ -1339,7 +1325,7 @@ const getEntityUsers = async (type: string, id: string) => {
   }
 
   if (normType === 'offer') {
-    const redemptions = await OfferRedemption.find({ offer: id })
+    const redemptions = await OfferRedemption.find({ offer: id, ...(dateRange ? { redemptionTime: dateRange } : {}) })
       .populate('user', 'name email profile role level points')
       .sort({ redemptionTime: -1, createdAt: -1 })
       .lean()
@@ -1358,23 +1344,23 @@ const getEntityUsers = async (type: string, id: string) => {
         action: 'Redeemed',
       }))
 
+    // Redemptions are newest first; retain each person's latest redemption.
+    const uniqueUsers = new globalThis.Map<string, (typeof users)[number]>()
+    users.forEach(user => {
+      if (!uniqueUsers.has(user._id)) uniqueUsers.set(user._id, user)
+    })
     return {
-      users,
+      users: Array.from(uniqueUsers.values()),
       totalCount: users.length,
       guestCount: 0,
     }
   }
 
   if (normType === 'map') {
-    const buyers = await User.find({
-      $or: [{ purchasedMaps: id }, { redeemedFreeMap: id }, { redeemedFreeMaps: id }],
-    })
-      .select('name email profile role level points updatedAt createdAt')
-      .lean()
-
     const viewList = await UsageView.find({
       type: 'map',
       entityId: id,
+      ...(dateRange ? { lastSeenAt: dateRange } : {}),
     })
       .sort({ lastSeenAt: -1 })
       .lean()
@@ -1388,21 +1374,6 @@ const getEntityUsers = async (type: string, id: string) => {
     ).length
 
     const userMap = new globalThis.Map<string, any>()
-
-    buyers.forEach((b: any) => {
-      const uId = String(b._id)
-      userMap.set(uId, {
-        _id: uId,
-        name: b.name || 'Anonymous User',
-        email: b.email,
-        profile: b.profile,
-        role: b.role,
-        level: b.level || 1,
-        points: b.points || 0,
-        date: b.updatedAt || b.createdAt,
-        action: 'Purchased/Unlocked',
-      })
-    })
 
     if (authViewerIds.length > 0) {
       const viewers = await User.find({ _id: { $in: authViewerIds } })

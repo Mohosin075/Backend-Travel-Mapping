@@ -67,7 +67,10 @@ const getAllMaps = async (query: Record<string, unknown>) => {
     }
 
     // Add map ID filtering to the query
-    query._id = { $in: mapIds }
+    const assignedIds = (query._id as any)?.$in
+    query._id = { $in: assignedIds
+      ? mapIds.filter(id => assignedIds.some((assigned: any) => String(assigned) === String(id)))
+      : mapIds }
     delete query.category // Remove category from query as it's not a field in Map model
   }
 

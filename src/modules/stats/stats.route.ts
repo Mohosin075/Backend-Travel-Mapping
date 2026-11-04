@@ -19,7 +19,7 @@ router.get(
 
 router.get(
   '/entity-users',
-  auth(USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR),
+  auth(USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN),
   StatsController.getEntityUsers,
 )
 

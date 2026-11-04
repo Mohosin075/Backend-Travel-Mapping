@@ -3,24 +3,20 @@ GENERAL VERSION:
 Dashboard:
 
 1. Map editors are not allowed to edit maps if they are as drafts. It should allow them to edit them even if they are as a draft.
-
+- solved
 2. On the users and roles page, when I enter a user's profile and get all the unlocked prizes, I would like them to come out in order and those I have not yet unlocked do not come out.
-
+- solved
 3. On the user and role page, when I enter the profile of a user, in "use activity" put the option to see more and see less.
-
+- solved
 4. On the reports and statistics page, in the "most viewed places" section where it says the amount, let me see who these users are. Same with redeemed offers and the most used maps.
-
+- solved
 5. Change the orange colors of the dahboard pages to the yellow of Roadtripeado to respect the branding of the brand.
-
+- solved
 Users:
 
 1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped.
 
-2. The way I saw the profile in the mobile version was changed, I liked it more like it was before where the profile picture was given and the level, points and menu options (your routes, contributions, etc.) came out. It was just changing the "edit profile" button to "view profile" button.
-
-3. On the landing page, put the photo of the "rewards and levels" section, would be the area where a photo has not yet been placed. The images are sent to you via Google Drive link.
-
-4. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map.
+2. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map.
 
 Users without buying a map:
 

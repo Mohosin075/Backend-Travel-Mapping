@@ -39,6 +39,7 @@ export interface ISalesAndTaxesStats {
 }
 
 export interface IUsageItem {
+  entityType?: 'place' | 'business' | 'map' | 'offer';
   id?: string;
   name: string;
   count: number;

@@ -310,10 +310,10 @@ const getUserById = async (userId: string): Promise<any> => {
     .sort({ createdAt: -1 })
     .lean()
 
-  // Fetch unlocked and in-progress awards/badges
-  const awards = await Award.find({ userId })
+  // The admin prize list contains earned rewards, ordered by milestone.
+  const awards = await Award.find({ userId, isUnlocked: true })
     .populate('configId')
-    .sort({ createdAt: -1 })
+    .sort({ target: 1, createdAt: 1, _id: 1 })
     .lean()
 
   // Fetch user's submitted reviews
@@ -346,7 +346,7 @@ const getUserById = async (userId: string): Promise<any> => {
   // Build unified chronological activity timeline
   const activityTimeline: any[] = []
 
-  visitedPlaces.slice(0, 20).forEach((v: any) => {
+  visitedPlaces.forEach((v: any) => {
     activityTimeline.push({
       type: 'place_visit',
       title: 'Visited Place',
@@ -363,7 +363,7 @@ const getUserById = async (userId: string): Promise<any> => {
     })
   })
 
-  reviews.slice(0, 15).forEach((r: any) => {
+  reviews.forEach((r: any) => {
     activityTimeline.push({
       type: 'review_submitted',
       title: `Submitted a ${r.rating || 5}★ Review`,
@@ -380,7 +380,7 @@ const getUserById = async (userId: string): Promise<any> => {
     })
   })
 
-  offerRedemptions.slice(0, 15).forEach((o: any) => {
+  offerRedemptions.forEach((o: any) => {
     activityTimeline.push({
       type: 'offer_claimed',
       title: 'Claimed Special Offer',

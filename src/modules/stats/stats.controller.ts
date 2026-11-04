@@ -44,7 +44,8 @@ const getEntityUsers = catchAsync(async (req: Request, res: Response) => {
   const { type, id } = req.query
   const result = await StatsService.getEntityUsers(
     String(type || ''),
-    String(id || '')
+    String(id || ''),
+    String(req.query.timeFilter || '')
   )
 
   sendResponse(res, {
