@@ -116,7 +116,7 @@ app.use(
 app.get('/', (req: Request, res: Response) => {
   res.status(StatusCodes.OK).json({
     success: true,
-    message: 'Welcome to the API! The server is running smoothly.',
+    message: 'Welcome to the roadtripeado API! The server is running smoothly.',
     timestamp: new Date().toISOString(),
   })
 })

@@ -1,48 +1,74 @@
-The problem is still ongoing, but I understand the problem. If the map is in draft, it does not come out
-to the editor.
-
-Please, I would like the editor to be able to edit the maps even if it is in draft. - [SOLVED]
+GENERAL VERSION:
 
 Dashboard:
 
-1. Map editors are not allowed to edit maps if they are as drafts. It should allow them to edit them even if they are as a draft. - [SOLVED]
+1. Map editors are not allowed to edit maps if they are as drafts. It should allow them to edit them even if they are as a draft.
 
-2. On the users and roles page, when I enter a user's profile and get all the unlocked prizes, I would like them to come out in order and those I have not yet unlocked do not come out. - [SOLVED]
+2. On the users and roles page, when I enter a user's profile and get all the unlocked prizes, I would like them to come out in order and those I have not yet unlocked do not come out.
 
-3. On the user and role page, when I enter the profile of a user, in "use activity" put the option to see more and see less. - [SOLVED]
+3. On the user and role page, when I enter the profile of a user, in "use activity" put the option to see more and see less.
 
-4. On the reports and statistics page, in the "most viewed places" section where it says the amount, let me see who these users are. Same with redeemed offers and the most used maps. - [SOLVED]
+4. On the reports and statistics page, in the "most viewed places" section where it says the amount, let me see who these users are. Same with redeemed offers and the most used maps.
 
-5. Change the orange colors of the dahboard pages to the yellow of Roadtripeado to respect the branding of the brand. - [SOLVED]
+5. Change the orange colors of the dahboard pages to the yellow of Roadtripeado to respect the branding of the brand.
 
 Users:
 
-1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped. - [SOLVED]
+1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped.
 
-2. The way I saw the profile in the mobile version was changed, I liked it more like it was before where the profile picture was given and the level, points and menu options (your routes, contributions, etc.) came out. It was just changing the "edit profile" button to "view profile" button. - [SOLVED]
+2. The way I saw the profile in the mobile version was changed, I liked it more like it was before where the profile picture was given and the level, points and menu options (your routes, contributions, etc.) came out. It was just changing the "edit profile" button to "view profile" button.
 
 3. On the landing page, put the photo of the "rewards and levels" section, would be the area where a photo has not yet been placed. The images are sent to you via Google Drive link.
 
-4. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map. - [SOLVED]
+4. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map.
 
 Users without buying a map:
 
-1. When you type a municipality in the search engine, all the pins of that municipality can leave as long as they are blocked. Currently, only businesses come out. - [SOLVED]
+1. When you type a municipality in the search engine, all the pins of that municipality can leave as long as they are blocked. Currently, only businesses come out.
 
-2. Users who are map editors, despite the fact that the places on the maps they have not bought are blocked, but it allows them to see the info of the places by clicking on the pins. Since they are editors, they can only see the places on the maps, which are editors. - [SOLVED]
+2. Users who are map editors, despite the fact that the places on the maps they have not bought are blocked, but it allows them to see the info of the places by clicking on the pins. Since they are editors, they can only see the places on the maps, which are editors.
 
+
+
+GENERAL VERSION:
 
 Users:
 
-1. If I have selected the map of Costa Rica, when I go to the "offers" page, you can see the offers from other countries. Only the offers of the corresponding country should be seen, such as on the "places" and "maps" page. - [SOLVED]
+1. If I have selected the map of Costa Rica, when I go to the "offers" page, you can see the offers from other countries. Only the offers of the corresponding country should be seen, such as on the "places" and "maps" page.
 
-2. On the "My Routes" page, when the user is editing the route and "save route," it should be saved and directed to the non-editable page. - [SOLVED]
+2. On the "My Routes" page, when the user is editing the route and "save route," it should be saved and directed to the non-editable page.
 
-3. On the "my routes" page, when you enter the editable and non-editable path, you can not see the "x" to exit the page, since it is covered with the main menu. It also happens when you add a new stop. - [SOLVED]
-
-
+3. On the "my routes" page, when you enter the editable and non-editable path, you can not see the "x" to exit the page, since it is covered with the main menu. It also happens when you add a new stop.
 
 Dashboard:
-4. On the map of the places page, it does not let me drag the pins to change their location. - [SOLVED]
-5. I need that when editing a place, the checkmark of the "always open" option is selected or
-deselected depending on what has been previously granted. - [SOLVED]
+
+4. On the map of the places page, it does not let me drag the pins to change their location.
+
+5. I need that when editing a place, the checkmark of the "always open" option is selected or deselected depending on what has been previously granted.
+
+
+GENERAL VERSION: Dashboard: 1. On the reports and statistics page, in the "most viewed places" section, the view count does not allow me to see the full list of users who have viewed those places. 
+
+2. Replace the orange colors throughout the dashboard pages with the "Roadtripeado" yellow to ensure brand consistency. 
+
+3. On the map within the "places" page, implement a 2-second press-and-hold delay before dragging is enabled (reverting to the previous behavior). 
+
+4. On the reports and statistics page, data regarding active users or those who have viewed specific places is not updated in real-time; for instance, I do not appear in the statistics even when I am logged in. Additionally, for users who have set their profiles to "anonymous," this should only apply to other users—not to administrators. 
+
+5. On the "places" page, when editing a place saved as a draft, the "save as draft" button is missing, forcing the user to publish it instead. While the "save as draft" button appears when editing via the map view, it is absent in the list view. 
+
+6. On the "places" page map, when editing a place, certain fields—such as "difficulty," "hiking time," etc.—do not display the previously selected information upon re-entering the edit screen. This creates the impression that the data was never entered or saved. For example, check the "Two Waters Waterfall" (Cascada Two Waters) in the Costa Rica map; although its difficulty is set to "medium," this selection is not visible when opening the entry to edit it again. 
+
+7. The search function on the "places" page is not working correctly; when I type "La Piedra Escrita," the intended location does not appear, even though it is correctly saved in the system. 
+
+Users: 
+
+1. On the "My Routes" page, allow users to switch countries—similar to the "Places, Maps, Offers" page—so that the routes for the selected country are displayed. 
+
+2. On the "Visited Places" page, add a filter by country, ensuring the selected country appears first (consistent with the "Places, Offers, Maps" page). 
+
+3. Users currently earn 10 points for marking places as "visited"; remove the option to earn points for this action. 
+
+MOBILE VERSION: 
+
+1. In the "burger" menu, remove the "View Profile" option.
