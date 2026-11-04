@@ -398,6 +398,7 @@ const getAllPlaces = async (
   query: Record<string, unknown>,
   isAdminOrEditor = false,
   accessibleMapIds: string[] = [],
+  editorMapIds?: string[],
 ) => {
   const searchTerm =
     typeof query.searchTerm === 'string' ? query.searchTerm.trim() : ''
@@ -451,6 +452,12 @@ const getAllPlaces = async (
 
 
   // 1. Fetch regular places if applicable
+  if (editorMapIds) {
+    match.$and = [
+      ...((match.$and as any[]) || []),
+      { $or: [{ status: 'Published' }, { map: { $in: editorMapIds } }] },
+    ]
+  }
   const queryType = query.type as string | undefined
   const shouldQueryPlaces = !queryType || queryType === 'Regular' || queryType.includes('Regular')
   

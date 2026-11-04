@@ -12,6 +12,7 @@ import { placeSearchableFields } from '../place/place.constants'
 import { businessSearchableFields } from '../business/business.constants'
 import { autoTranslateField } from '../../utils/autoTranslate'
 import { NotificationIntegration } from '../notification/notification.integration'
+import { lockedPlaceTeaser } from '../../helpers/placePrivacy'
 
 const processMapTranslations = async (payload: Partial<IMap>) => {
   if (payload.name) {
@@ -260,13 +261,19 @@ const getDiscoveryData = async (
   query: Record<string, unknown>,
   lockedMapIds?: string[],
   isAdminOrEditor = false,
-  preloadedMapObj?: any
+  preloadedMapObj?: any,
+  editorMapIds?: string[],
 ) => {
   const page = Number(query.page) || 1
   const limit = Number(query.limit) || 10
   
   // Prepare separate queries because Place and Business have different schemas
   const placeQueryObj = { ...query }
+  if (editorMapIds) {
+    placeQueryObj.$and = [
+      { $or: [{ status: 'Published' }, { map: { $in: editorMapIds } }] },
+    ]
+  }
   // Business has its own status vocabulary (Approved/Pending/Rejected) — never inherit the Place status from query
   const { status: _ignoredStatus, ...businessQueryObjBase } = query as any
   const businessQueryObj: Record<string, unknown> = { ...businessQueryObjBase }
@@ -350,10 +357,12 @@ const getDiscoveryData = async (
   // to 'place' so the client can tell Place vs Business collection entities apart.
   const formattedPlaces = places.map(place => {
     const mapId = place.map?._id || place.map
-    const isLocked = mapId && lockedMapIds && lockedMapIds.includes(mapId.toString()) && place.type !== 'Business'
+    const isLocked = place.type !== 'Business' && (
+      (mapId && lockedMapIds?.includes(mapId.toString())) ||
+      (!mapId && (!isAdminOrEditor || editorMapIds !== undefined))
+    )
     return {
-      ...(place as any),
-      ...(isLocked ? { entryCost: undefined, hikeTime: undefined, difficulty: undefined, atmosphere: undefined, schedules: undefined } : {}),
+      ...(isLocked ? lockedPlaceTeaser(place) : place as any),
       media: Array.isArray(place.media) ? place.media.filter(Boolean) : [],
       placeType: place.type,
       type: 'place',
@@ -477,7 +486,7 @@ const getDiscoveryData = async (
 
   // If there's a searchTerm, we might want to sort by relevance or alphabetically
   if (query.searchTerm) {
-    result.sort((a, b) => a.name.localeCompare(b.name))
+    result.sort((a, b) => String((a.name as any)?.en || a.name || '').localeCompare(String((b.name as any)?.en || b.name || '')))
   } else if (query.sort) {
     // Basic sorting on combined results if needed
     const isDesc = (query.sort as string).startsWith('-')

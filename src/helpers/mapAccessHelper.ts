@@ -40,12 +40,14 @@ export const getAccessibleMapIds = async (user: any): Promise<string[]> => {
     const assignedMapIds = (fullUser.assignedMaps || [])
       .map((id: any) => (id?._id ? id._id.toString() : id?.toString()))
       .filter(Boolean)
-    const assignedCountries: string[] = fullUser.assignedCountries || []
+    const assignedCountries: string[] = (fullUser.assignedCountries || []).filter(
+      (country: unknown): country is string => typeof country === 'string' && Boolean(country.trim()),
+    )
 
     let countryMapIds: string[] = []
     if (assignedCountries.length > 0) {
       const countryRegexes = assignedCountries.map(
-        (c: string) => new RegExp('^' + c.trim() + '$', 'i')
+        (c: string) => new RegExp('^' + c.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i')
       )
       const countryMaps = await Map.find(
         {
@@ -60,11 +62,7 @@ export const getAccessibleMapIds = async (user: any): Promise<string[]> => {
       )
       countryMapIds = countryMaps.map(m => m._id.toString())
     }
-    const freeMaps = await Map.find({ isPaid: false }, '_id')
-    const freeMapIds = freeMaps.map(m => m._id.toString())
-    const purchasedMapIds = (fullUser.purchasedMaps || []).map((id: any) => id.toString())
-
-    return Array.from(new Set([...assignedMapIds, ...countryMapIds, ...freeMapIds, ...purchasedMapIds]))
+    return Array.from(new Set([...assignedMapIds, ...countryMapIds]))
   }
 
   // Find all free maps

@@ -4,7 +4,6 @@ import catchAsync from '../../shared/catchAsync'
 import sendResponse from '../../shared/sendResponse'
 import { PlaceService } from './place.service'
 import { getUserFromToken, getAccessibleMapIds, verifyEditorEditAccess } from '../../helpers/mapAccessHelper'
-import { Map } from '../map/map.model'
 import ApiError from '../../errors/ApiError'
 import { getCoordinatesFromUrl } from '../../utils/mapHelper'
 import { USER_ROLES } from '../../enum/user'
@@ -12,6 +11,7 @@ import { toStringArray } from '../../utils/media'
 import { localizeDocument } from '../../helpers/localize'
 import pick from '../../shared/pick'
 import { JwtPayload } from 'jsonwebtoken'
+import { lockedPlaceTeaser } from '../../helpers/placePrivacy'
 
 const placeFields = ['name', 'description', 'access', 'entryCost', 'hikeTime', 'atmosphere', 'accessibility.notes', 'recommendations.tips', 'category.name']
 
@@ -49,21 +49,14 @@ const createPlace = catchAsync(async (req: Request, res: Response) => {
 const getAllPlaces = catchAsync(async (req: Request, res: Response) => {
   const authorizationHeader = req.headers.authorization
 
-  // Run auth lookup and paid map IDs in parallel to avoid sequential DB hits
-  const [user, paidMaps] = await Promise.all([
-    getUserFromToken(authorizationHeader),
-    Map.find({ isPaid: true }, '_id'),
-  ])
+  const user = await getUserFromToken(authorizationHeader)
   const accessibleMapIds = await getAccessibleMapIds(user)
-
-  const paidMapIds = paidMaps.map(m => m._id.toString())
-  const lockedMapIds = paidMapIds.filter(id => !accessibleMapIds.includes(id))
 
   const isSuperOrAdmin = !!(user && [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(user.role as any))
   const isEditor = !!(user && user.role === USER_ROLES.MAP_EDITOR)
   const isAdminOrEditor = isSuperOrAdmin || isEditor
 
-  const result = await PlaceService.getAllPlaces(req.query, isAdminOrEditor, accessibleMapIds)
+  const result = await PlaceService.getAllPlaces(req.query, isAdminOrEditor, accessibleMapIds, isEditor ? accessibleMapIds : undefined)
 
   const visitedSet = new Set(
     (user?.visitedPlaces || []).map((id: any) => id.toString())
@@ -71,17 +64,13 @@ const getAllPlaces = catchAsync(async (req: Request, res: Response) => {
 
   const updatedData = result.data.map((place: any) => {
     const mapId = place.map?._id || place.map
-    const isLocked = !isSuperOrAdmin && mapId && lockedMapIds.includes(mapId.toString()) && place.type !== 'Business'
+    const isLocked = !isSuperOrAdmin && place.type !== 'Business' &&
+      (!mapId || !accessibleMapIds.includes(mapId.toString()))
     const isVisited = visitedSet.has(place._id.toString())
     if (isLocked) {
       // Keep teaser fields (name/media/category/location) for locked cards
-      const { description, hours, privateInfo, ...teaser } = place
       return {
-        ...teaser,
-        description: undefined,
-        hours: undefined,
-        privateInfo: undefined,
-        isLocked: true,
+        ...lockedPlaceTeaser(place),
         isVisited,
       }
     }
@@ -121,6 +110,16 @@ const getPlaceById = catchAsync(async (req: Request, res: Response) => {
   const accessibleMapIds = await getAccessibleMapIds(user)
 
   const mapId = result.map?._id || result.map
+  if (!isSuperOrAdmin && !mapId && result.type !== 'Business') {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'This place has no accessible map.')
+  }
+  if (isEditor && (!mapId || !accessibleMapIds.includes(mapId.toString())) && result.type !== 'Business') {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You can only view places in your assigned maps.')
+  }
+  if (!isSuperOrAdmin && (result.status === 'Draft' || result.status === 'Pending') &&
+      (!isEditor || !mapId || !accessibleMapIds.includes(mapId.toString()))) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Place not found')
+  }
   if (mapId) {
     const isAccessible = accessibleMapIds.includes(mapId.toString())
     if (!isSuperOrAdmin && !isAccessible) {

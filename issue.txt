@@ -15,15 +15,15 @@ Dashboard:
 Users:
 
 1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped.
-
+- solved
 2. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map.
-
+- solved
 Users without buying a map:
 
 1. When you type a municipality in the search engine, all the pins of that municipality can leave as long as they are blocked. Currently, only businesses come out.
-
+- solved
 2. Users who are map editors, despite the fact that the places on the maps they have not bought are blocked, but it allows them to see the info of the places by clicking on the pins. Since they are editors, they can only see the places on the maps, which are editors.
-
+- solved
 
 
 GENERAL VERSION:

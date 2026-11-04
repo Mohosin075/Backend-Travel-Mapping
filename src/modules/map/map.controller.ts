@@ -200,7 +200,7 @@ const getDiscoveryData = catchAsync(async (req: Request, res: Response) => {
   // Run accessible map IDs, paid maps lookup, and target map lookup in parallel
   const [accessibleMapIds, paidMaps, targetMap] = await Promise.all([
     getAccessibleMapIds(user),
-    Map.find({ isPaid: true }, '_id'),
+    Map.find(user?.role === USER_ROLES.MAP_EDITOR ? {} : { isPaid: true }, '_id'),
     mapIdParam ? Map.findById(mapIdParam).select('name country').lean() : null,
   ])
 
@@ -208,7 +208,8 @@ const getDiscoveryData = catchAsync(async (req: Request, res: Response) => {
   const lockedMapIds = paidMapIds.filter(id => !accessibleMapIds.includes(id))
 
   const isAdminOrEditor = !!(user && (user.role === 'super_admin' || user.role === 'admin' || user.role === 'map_editor'))
-  const result = await MapService.getDiscoveryData(req.query, lockedMapIds, isAdminOrEditor, targetMap)
+  const result = await MapService.getDiscoveryData(req.query, lockedMapIds, isAdminOrEditor, targetMap,
+    user?.role === USER_ROLES.MAP_EDITOR ? accessibleMapIds : undefined)
 
   const visitedSet = new Set(
     (user?.visitedPlaces || []).map((id: any) => id.toString())
@@ -218,30 +219,29 @@ const getDiscoveryData = catchAsync(async (req: Request, res: Response) => {
   const now = Date.now()
   const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000
 
-  const itemsWithVisited = Array.isArray(result)
-    ? result.map((item: any) => {
-        const isNewlyAdded = Boolean(
-          item.createdAt && (now - new Date(item.createdAt).getTime() <= sixtyDaysMs)
-        )
-        const isLocked = Boolean(item.isLocked)
+  const enrichItem = (item: any) => {
+    const isNewlyAdded = Boolean(
+      item.createdAt && (now - new Date(item.createdAt).getTime() <= sixtyDaysMs)
+    )
+    const isLocked = Boolean(item.isLocked)
 
-        // For users without an account, hide the name of newly added locked locations (Issue 2)
-        let maskedName = item.name
-        if (isGuest && isNewlyAdded && isLocked) {
-          maskedName = {
-            en: 'A location was added to the map...',
-            es: 'Se agregó una ubicación al mapa...',
-          }
-        }
+    // For users without an account, hide the name of newly added locked locations.
+    let maskedName = item.name
+    if (isGuest && isNewlyAdded && isLocked) {
+      maskedName = {
+        en: 'A location was added to the map...',
+        es: 'Se agregó una ubicación al mapa...',
+      }
+    }
 
-        return {
-          ...item,
-          name: maskedName,
-          isNewlyAdded,
-          isVisited: visitedSet.has(item._id?.toString()),
-        }
-      })
-    : result
+    return {
+      ...item,
+      name: maskedName,
+      isNewlyAdded,
+      isVisited: visitedSet.has(item._id?.toString()),
+    }
+  }
+  const itemsWithVisited = { ...result, data: result.data.map(enrichItem) }
 
   const discoveryFields = ['name', 'description', 'access', 'entryCost', 'hikeTime', 'atmosphere', 'accessibility.notes', 'recommendations.tips', 'category.name']
 
