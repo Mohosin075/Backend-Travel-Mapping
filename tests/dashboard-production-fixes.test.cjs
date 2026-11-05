@@ -5,7 +5,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
-const frontend = path.resolve(root, '../dashboard/giovafilm_mapping')
+const frontend = path.resolve(root, '../frontend_giovafilm_roadtripeado')
 const front = fs.existsSync(path.join(root, '.dashboard-fixes-stage')) ? path.join(root, '.dashboard-fixes-stage') : frontend
 const id = '123456789012345678901234'
 const userId = '123456789012345678901235'
@@ -96,6 +96,7 @@ test('private accounts use verified user IDs; a guest cannot inherit a stale soc
 test('rankings and drilldowns share the same time-scoped, deduplicated viewer pipeline', async () => {
   const calls = []
   const reporting = load('src/modules/stats/usage-reporting.ts', {
+    '../user/user.model': { User: { collection: { name: 'users' } } },
     './usageView.model': { UsageView: { aggregate: async pipeline => { calls.push(plain(pipeline)); return [] } } },
   })
   const range = { $gte: new Date('2026-10-01'), $lte: new Date('2026-10-31T23:59:59.999Z') }
@@ -106,7 +107,7 @@ test('rankings and drilldowns share the same time-scoped, deduplicated viewer pi
     assert.deepEqual(pipeline[1].$unionWith.pipeline[0].$match, pipeline[0].$match)
     assert.deepEqual(pipeline[2].$group._id, { type: '$type', entityId: '$entityId', viewerKey: '$viewerKey' })
   }
-  assert.equal(calls[0].at(-1).$limit, 20, 'ranking is bounded')
+  assert.equal(calls[0].find(stage => stage.$limit).$limit, 20, 'ranking is bounded')
   assert.equal(calls[1].some(stage => stage.$limit), false, 'every viewer is returned')
 })
 
@@ -248,6 +249,7 @@ test('reports include more than 100 private active accounts and do not infer vis
     distinctViewers: async () => active ? users.map(u => `user:${u._id}`) : [],
   }
   imports['../user/user.model'] = { User: {
+    collection: { name: 'users' },
     countDocuments: async () => users.length,
     distinct: async (_field, query) => { presenceQueries.push(query); return [] },
     find: query => query._id ? chain(active ? users : []) : emptyChain([]),

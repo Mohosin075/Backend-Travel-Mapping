@@ -474,16 +474,16 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   // Monthly sales & tax grouping
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const monthlyMap: Record<string, { totalSales: number; taxes: number; netRevenue: number }> = {}
-  const now = new Date()
+  const now = new Date(Math.min(Date.now(), dateRange?.$lte?.getTime() ?? Date.now()))
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const label = monthNames[d.getMonth()]
+    const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`
     monthlyMap[label] = { totalSales: 0, taxes: 0, netRevenue: 0 }
   }
 
   payments.forEach(p => {
     const date = new Date(p.createdAt)
-    const label = monthNames[date.getMonth()]
+    const label = `${monthNames[date.getMonth()]} ${date.getFullYear()}`
     if (monthlyMap[label] !== undefined) {
       monthlyMap[label].totalSales += p.amount || 0
     }
@@ -528,6 +528,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     return {
       id: String(r._id), name: localizeField(doc?.name), count: r.count,
       placesCount: mapPlaceCountMap.get(String(r._id)) || 0, country: doc?.country,
+      profileCount: r.profileCount || 0,
       countMetric: 'unique_viewers' as const,
       ...(!dateRange ? { totalViews: doc?.viewCount || 0 } : {}),
     }
@@ -538,6 +539,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     .sort((a, b) => b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
   let mostOpenedPlaces: IUsageItem[] = placesWithCounts.map(r => ({
     id: String(r._id), name: localizeField(placeDocMap.get(String(r._id))?.name),
+    profileCount: r.profileCount || 0,
     count: r.count, countMetric: 'unique_viewers' as const,
     ...(!dateRange ? { totalViews: placeDocMap.get(String(r._id))?.openCount || 0 } : {}),
   }))
@@ -546,124 +548,32 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
       const ranks = await rankedViewers('business', [usagePlace.id!], dateRange)
       if (!dateRange) usagePlace.totalViews = usagePlace.count
       usagePlace.count = ranks[0]?.count || 0
+      usagePlace.profileCount = ranks[0]?.profileCount || 0
       usagePlace.countMetric = 'unique_viewers'
     }
     mostOpenedPlaces = [usagePlace]
   }
 
-  let mostRedeemedOffers: IUsageItem[] = []
-  if (dateRange) {
-    const scopedOffers = await Offer.find(offerFilter)
-      .select('_id title business place')
-      .populate('business', 'name')
-      .populate('place', 'name')
-      .lean()
-    const scopedIds = scopedOffers.map(o => o._id)
-    const redemptionMatch: Record<string, any> = { redemptionTime: dateRange }
-    if (scopedIds.length > 0) {
-      redemptionMatch.offer = { $in: scopedIds }
-    } else if (Object.keys(offerFilter).length > 0) {
-      redemptionMatch.offer = { $in: [] }
-    }
-    const redemptionAgg = await OfferRedemption.aggregate([
-      { $match: redemptionMatch },
-      { $group: { _id: '$offer', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 20 },
-    ])
-
-    if (redemptionAgg.length > 0) {
-      const offerInfoById = new globalThis.Map<
-        string,
-        {
-          title: string;
-          businessName?: string;
-          businessId?: string;
-          placeId?: string;
-        }
-      >(
-        scopedOffers.map((o: any) => [
-          String(o._id),
-          {
-            title: localizeField(o.title),
-            businessName: o.business?.name
-              ? localizeField(o.business.name)
-              : o.place?.name
-                ? localizeField(o.place.name)
-                : undefined,
-            businessId: o.business?._id ? String(o.business._id) : undefined,
-            placeId: o.place?._id ? String(o.place._id) : undefined,
-          },
-        ]),
-      )
-      const missingIds = redemptionAgg
-        .map((r: any) => r._id)
-        .filter((id: any) => !offerInfoById.has(String(id)))
-      if (missingIds.length) {
-        const extra = await Offer.find({ _id: { $in: missingIds } })
-          .select('_id title business place')
-          .populate('business', 'name')
-          .populate('place', 'name')
-          .lean()
-        extra.forEach((o: any) =>
-          offerInfoById.set(String(o._id), {
-            title: localizeField(o.title),
-            businessName: o.business?.name
-              ? localizeField(o.business.name)
-              : o.place?.name
-                ? localizeField(o.place.name)
-                : undefined,
-            businessId: o.business?._id ? String(o.business._id) : undefined,
-            placeId: o.place?._id ? String(o.place._id) : undefined,
-          }),
-        )
-      }
-      mostRedeemedOffers = redemptionAgg.map((r: any) => {
-        const info = offerInfoById.get(String(r._id))
-        return {
-          id: String(r._id),
-          name: info?.title || 'Unknown offer',
-          businessName: info?.businessName,
-          businessId: info?.businessId,
-          placeId: info?.placeId,
-          count: r.count || 0,
-        }
-      })
-    } else {
-      mostRedeemedOffers = scopedOffers.slice(0, 20).map((o: any) => ({
-        id: String(o._id),
-        name: localizeField(o.title),
-        businessName: o.business?.name
-          ? localizeField(o.business.name)
-          : o.place?.name
-            ? localizeField(o.place.name)
-            : undefined,
-        businessId: o.business?._id ? String(o.business._id) : undefined,
-        placeId: o.place?._id ? String(o.place._id) : undefined,
-        count: 0,
-      }))
-    }
-  } else {
-    const mostRedeemedOffersRaw = await Offer.find(offerFilter)
-      .sort({ redemptionsCount: -1 })
-      .limit(20)
-      .select('title redemptionsCount business place')
-      .populate('business', 'name')
-      .populate('place', 'name')
-      .lean()
-    mostRedeemedOffers = mostRedeemedOffersRaw.map((o: any) => ({
-      id: String(o._id),
-      name: localizeField(o.title),
-      businessName: o.business?.name
-        ? localizeField(o.business.name)
-        : o.place?.name
-          ? localizeField(o.place.name)
-          : undefined,
-      businessId: o.business?._id ? String(o.business._id) : undefined,
-      placeId: o.place?._id ? String(o.place._id) : undefined,
-      count: o.redemptionsCount || 0,
-    }))
-  }
+  // Rankings and drilldowns use redemption records, never the legacy cached counter.
+  const scopedOffers = await Offer.find(offerFilter)
+    .select('_id title business place')
+    .populate('business', 'name').populate('place', 'name').lean()
+  const redemptionRanks = await OfferRedemption.aggregate([
+    { $match: { offer: { $in: scopedOffers.map(o => o._id) }, ...(dateRange ? { redemptionTime: dateRange } : {}) } },
+    { $lookup: { from: User.collection.name, localField: 'user', foreignField: '_id',
+      pipeline: [{ $match: { status: { $ne: 'deleted' } } }, { $project: { _id: 1 } }], as: 'account' } },
+    { $group: { _id: '$offer', count: { $sum: 1 }, accountIds: { $addToSet: { $arrayElemAt: ['$account._id', 0] } } } },
+    { $project: { count: 1, profileCount: { $size: { $filter: { input: '$accountIds', as: 'id', cond: { $ne: ['$$id', null] } } } } } },
+  ])
+  const redemptionRankMap = new globalThis.Map(redemptionRanks.map(r => [String(r._id), r]))
+  const mostRedeemedOffers: IUsageItem[] = scopedOffers.map((o: any) => ({
+    id: String(o._id), name: localizeField(o.title),
+    businessName: o.business?.name ? localizeField(o.business.name) : o.place?.name ? localizeField(o.place.name) : undefined,
+    businessId: o.business?._id ? String(o.business._id) : undefined,
+    placeId: o.place?._id ? String(o.place._id) : undefined,
+    count: redemptionRankMap.get(String(o._id))?.count || 0,
+    profileCount: redemptionRankMap.get(String(o._id))?.profileCount || 0,
+  })).sort((a, b) => b.count - a.count || a.id!.localeCompare(b.id!)).slice(0, 20)
 
   // ==================== USER ACTIVITY & ENGAGEMENT ====================
   // Build scoped filters for Visited, Review, and OfferRedemption
@@ -783,7 +693,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   })
 
   // User registered filtering
-  const userCountFilter: Record<string, any> = {}
+  const userCountFilter: Record<string, any> = { status: { $ne: 'deleted' } }
   if (countryRegex) {
     userCountFilter['address.country'] = countryRegex
   }
@@ -854,7 +764,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
       .lean(),
     hasEntity
       ? Promise.resolve([])
-      : User.find(countryRegex ? { 'address.country': countryRegex } : {})
+      : User.find({ ...userCountFilter, ...(dateRange ? { createdAt: dateRange } : {}) })
           .sort({ createdAt: -1 })
           .limit(8)
           .select('name email profile createdAt role')
@@ -956,9 +866,6 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
 
   recentActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
-  let finalActiveToday = activeTodaySet.size
-  let finalActiveWeek = activeWeekSet.size
-  let finalActiveMonth = activeMonthSet.size
 
   // Query active users to enable profile inspection on statistics page
   const todayUserIds = new Set<string>()
@@ -1012,18 +919,11 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
 
   let activeUsersDocs: any[] = []
   if (validObjectIds.length > 0) {
-    activeUsersDocs = await User.find({ _id: { $in: validObjectIds } })
+    activeUsersDocs = await User.find({ _id: { $in: validObjectIds }, status: { $ne: 'deleted' } })
       .select('name email profile role level points lastActiveAt updatedAt createdAt')
       .sort({ lastActiveAt: -1, updatedAt: -1 })
       .lean()
   }
-
-  // Also query general registered users for "all" tab
-  const allUsersDocs = await User.find(countryRegex ? { 'address.country': countryRegex } : {})
-    .select('name email profile role level points lastActiveAt updatedAt createdAt')
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .limit(100)
-    .lean()
 
   const formatUserSummary = (u: any): IActiveUserSummary => {
     const id = String(u._id)
@@ -1055,12 +955,15 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   const activeTodayList = activeUsersList.filter((u) => u.isActiveToday)
   const activeWeekList = activeUsersList.filter((u) => u.isActiveWeek)
   const activeMonthList = activeUsersList.filter((u) => u.isActiveMonth)
-  const allUsersList = allUsersDocs.map(formatUserSummary)
+
 
   const userActivity: IUserActivityStats = {
-    activeUsersToday: finalActiveToday,
-    activeUsersThisWeek: Math.max(finalActiveToday, finalActiveWeek),
-    activeUsersThisMonth: Math.max(finalActiveWeek, finalActiveMonth),
+    activeUsersToday: activeTodayList.length,
+    guestVisitorsToday: [...activeTodaySet].filter(key => !key.startsWith('user:')).length,
+    guestVisitorsThisWeek: [...activeWeekSet].filter(key => !key.startsWith('user:')).length,
+    guestVisitorsThisMonth: [...activeMonthSet].filter(key => !key.startsWith('user:')).length,
+    activeUsersThisWeek: activeWeekList.length,
+    activeUsersThisMonth: activeMonthList.length,
     totalRegisteredUsers,
     totalPlacesVisited,
     totalOffersRedeemed,
@@ -1070,7 +973,6 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     activeTodayList,
     activeWeekList,
     activeMonthList,
-    allUsersList,
   }
 
   return {
@@ -1112,7 +1014,7 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     const userMap = new globalThis.Map<string, any>()
 
     if (authViewerIds.length > 0) {
-      const viewerUsers = await User.find({ _id: { $in: authViewerIds } })
+      const viewerUsers = await User.find({ _id: { $in: authViewerIds }, status: { $ne: 'deleted' } })
         .select('name email profile role level points')
         .lean()
       const viewerUserMap = new globalThis.Map(viewerUsers.map(u => [String(u._id), u]))
@@ -1142,6 +1044,7 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     return {
       users,
       totalCount: viewList.length,
+      profileCount: users.length,
       countMetric: 'unique_viewers',
       unavailableCount: new Set(viewList.filter((v: any) => v.viewerKey?.startsWith('user:')).map((v: any) => v.viewerKey)).size - users.length,
       guestCount,
@@ -1150,7 +1053,7 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
 
   if (normType === 'offer') {
     const redemptions = await OfferRedemption.find({ offer: id, ...(dateRange ? { redemptionTime: dateRange } : {}) })
-      .populate('user', 'name email profile role level points')
+      .populate({ path: 'user', select: 'name email profile role level points', match: { status: { $ne: 'deleted' } } })
       .sort({ redemptionTime: -1, createdAt: -1 })
       .lean()
 
@@ -1169,13 +1072,18 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
       }))
 
     // Redemptions are newest first; retain each person's latest redemption.
-    const uniqueUsers = new globalThis.Map<string, (typeof users)[number]>()
+    const uniqueUsers = new globalThis.Map<string, (typeof users)[number] & { redemptionCount: number }>()
     users.forEach(user => {
-      if (!uniqueUsers.has(user._id)) uniqueUsers.set(user._id, user)
+      if (!uniqueUsers.has(user._id)) uniqueUsers.set(user._id, { ...user, redemptionCount: 0 })
+      const summary = uniqueUsers.get(user._id)! as typeof user & { redemptionCount: number }
+      summary.redemptionCount += 1
     })
     return {
       users: Array.from(uniqueUsers.values()),
-      totalCount: users.length,
+      totalCount: redemptions.length,
+      profileCount: uniqueUsers.size,
+      unavailableRedemptions: redemptions.filter((r: any) => !r.user).length,
+      countMetric: 'redemptions',
       guestCount: 0,
     }
   }
@@ -1183,7 +1091,29 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
   return { users: [], totalCount: 0, guestCount: 0 }
 }
 
+// Separate paginated query keeps the report response bounded without hiding accounts.
+const getRegisteredUsers = async (query: Record<string, any>) => {
+  const page = Math.max(1, Math.min(1000000, Math.floor(Number(query.page) || 1)))
+  const limit = 25
+  const filter: Record<string, any> = { status: { $ne: 'deleted' } }
+  if (typeof query.country === 'string' && query.country.trim()) {
+    filter['address.country'] = new RegExp(`^${escapeRegex(query.country.trim())}$`, 'i')
+  }
+  if (typeof query.search === 'string' && query.search.trim()) {
+    const search = new RegExp(escapeRegex(query.search.trim().slice(0, 200)), 'i')
+    filter.$or = [{ name: search }, { email: search }, { role: search }]
+  }
+  const [total, users] = await Promise.all([
+    User.countDocuments(filter),
+    User.find(filter).select('name email profile role level points lastActiveAt createdAt')
+      .sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+  ])
+  return { users: users.map(u => ({ ...u, name: u.name || 'Explorer', email: u.email || '', lastActive: u.lastActiveAt || u.createdAt })),
+    page, limit, total, totalPages: Math.ceil(total / limit) }
+}
+
 export const StatsService = {
+  getRegisteredUsers,
   getDashboardData,
   getReportsData,
   searchReportEntities,

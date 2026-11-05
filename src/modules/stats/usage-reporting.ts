@@ -1,5 +1,6 @@
 import { PipelineStage } from 'mongoose'
 import { UsageView } from './usageView.model'
+import { User } from '../user/user.model'
 
 /** Both rankings and drilldowns count the same distinct recorded viewers.
  * Legacy last-seen records remain available; missing historical visits cannot be inferred.
@@ -20,9 +21,18 @@ export const viewerPipeline = (match: Record<string, any>): PipelineStage[] => [
 export const rankedViewers = (type: string, ids: string[], dateRange: any) =>
   UsageView.aggregate([
     ...viewerPipeline({ type, entityId: { $in: ids }, ...(dateRange ? { lastSeenAt: dateRange } : {}) }),
-    { $group: { _id: '$entityId', count: { $sum: 1 } } },
+    { $group: { _id: '$entityId', count: { $sum: 1 }, viewerKeys: { $addToSet: '$viewerKey' } } },
     { $sort: { count: -1, _id: 1 } },
     { $limit: 20 },
+    // Resolve profiles once per ranked entity rather than once per recorded view.
+    { $set: { accountIds: { $map: {
+      input: { $filter: { input: '$viewerKeys', as: 'key', cond: {
+        $regexMatch: { input: { $ifNull: ['$$key', ''] }, regex: '^user:[a-fA-F0-9]{24}$' },
+      } } }, as: 'key', in: { $toObjectId: { $substrBytes: ['$$key', 5, 24] } },
+    } } } },
+    { $lookup: { from: User.collection.name, localField: 'accountIds', foreignField: '_id',
+      pipeline: [{ $match: { status: { $ne: 'deleted' } } }, { $project: { _id: 1 } }], as: 'accounts' } },
+    { $project: { count: 1, profileCount: { $size: '$accounts' } } },
   ])
 
 export const entityViewers = (type: string, id: string, dateRange: any) =>

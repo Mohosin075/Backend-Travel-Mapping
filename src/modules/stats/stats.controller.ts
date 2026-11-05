@@ -77,7 +77,14 @@ const getEntityUsers = catchAsync(async (req: Request, res: Response) => {
   })
 })
 
+const getRegisteredUsers = catchAsync(async (req: Request, res: Response) => {
+  const result = await StatsService.getRegisteredUsers(req.query)
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true,
+    message: 'Registered users fetched successfully', data: result })
+})
+
 export const StatsController = {
+  getRegisteredUsers,
   recordActivity,
   recordUsage,
   getDashboardData,

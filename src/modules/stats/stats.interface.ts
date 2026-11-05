@@ -39,6 +39,7 @@ export interface ISalesAndTaxesStats {
 }
 
 export interface IUsageItem {
+  profileCount?: number;
   countMetric?: 'unique_viewers';
   totalViews?: number;
   entityType?: 'place' | 'business' | 'map' | 'offer';
@@ -94,6 +95,9 @@ export interface IActiveUserSummary {
 }
 
 export interface IUserActivityStats {
+  guestVisitorsToday?: number;
+  guestVisitorsThisWeek?: number;
+  guestVisitorsThisMonth?: number;
   activeUsersToday: number;
   activeUsersThisWeek: number;
   activeUsersThisMonth: number;
