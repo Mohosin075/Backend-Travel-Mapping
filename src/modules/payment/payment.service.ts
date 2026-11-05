@@ -19,6 +19,7 @@ import { emailHelper } from '../../helpers/emailHelper'
 import { emailTemplate } from '../../shared/emailTemplate'
 import stripe from '../../config/stripe'
 import { generatePDFInvoice } from '../../helpers/invoiceHelper'
+import { localizeField } from '../../helpers/localize'
 
 const createCheckoutSession = async (
   user: any,
@@ -50,8 +51,8 @@ const createCheckoutSession = async (
           price_data: {
             currency,
             product_data: {
-              name: payload.productName || map.name || 'Map Purchase',
-              description: payload.description || map.description,
+              name: payload.productName || localizeField(map.name) || 'Map Purchase',
+              description: payload.description || localizeField(map.description) || undefined,
             },
             unit_amount: Math.round(amount * 100),
           },
