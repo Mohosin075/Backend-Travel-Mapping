@@ -410,7 +410,6 @@ const verifyAccount = async (
       isUserExist.email!,
     )
 
-    console.log({ tokens })
 
     return authResponse(
       StatusCodes.OK,
@@ -504,7 +503,6 @@ const socialLogin = async (
       status: USER_STATUS.ACTIVE,
       password: crypto.randomUUID(),
     })
-    console.log({ createdUser })
     if (!createdUser)
       throw new ApiError(StatusCodes.BAD_REQUEST, 'Failed to create user.')
     const tokens = AuthHelper.createToken(

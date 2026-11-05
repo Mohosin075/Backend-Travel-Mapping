@@ -166,6 +166,7 @@ UserSchema.virtual('awards', {
 
 // ------------------ INDEXES ------------------
 UserSchema.index({ location: '2dsphere' }) // Geo queries support
+UserSchema.index({ lastActiveAt: -1 }) // Activity/report date ranges
 
 // ------------------ PRE HOOKS ------------------
 UserSchema.pre('save', async function (next) {

@@ -158,7 +158,6 @@ class SubscriptionService {
           request.paymentMethodId,
         )
       }
-      console.log('Metadata', userId, request.planId, request.businessId)
       // Create Stripe subscription
       const stripeSubscription = await stripeService.createSubscription({
         customerId: stripeCustomerId,
@@ -233,8 +232,6 @@ class SubscriptionService {
       // Get client secret for payment confirmation if needed
       let clientSecret: string | undefined
 
-      console.log('--- Debugging Subscription ---')
-      console.log('Subscription Status:', stripeSubscription.status)
 
       // Try getting from latest invoice's payment intent
       if (
@@ -248,16 +245,6 @@ class SubscriptionService {
         ) {
           clientSecret =
             (invoice.payment_intent as any).client_secret || undefined
-          console.log('Client Secret found in latest_invoice.payment_intent')
-        } else if (
-          invoice.payment_intent &&
-          typeof invoice.payment_intent === 'string'
-        ) {
-          // If it's a string, it means it wasn't expanded properly
-          console.log(
-            'Payment Intent found as string, but not expanded:',
-            invoice.payment_intent,
-          )
         }
       }
 
@@ -267,17 +254,9 @@ class SubscriptionService {
           clientSecret =
             (stripeSubscription.pending_setup_intent as any).client_secret ||
             undefined
-          console.log('Client Secret found in pending_setup_intent')
-        } else {
-          console.log(
-            'Pending Setup Intent found as string, but not expanded:',
-            stripeSubscription.pending_setup_intent,
-          )
         }
       }
 
-      console.log('Final clientSecret:', clientSecret)
-      console.log('------------------------------')
 
       console.log(
         `Subscription created for user ${userId}: ${subscription._id}`,
@@ -713,7 +692,6 @@ class SubscriptionService {
   ): Promise<{ sessionId: string; url: string }> {
     try {
       const user = await User.findById(userId).select('+email')
-      console.log({ user })
       if (!user) {
         throw new ApiError(StatusCodes.NOT_FOUND, 'User not found')
       }

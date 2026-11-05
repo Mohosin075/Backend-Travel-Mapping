@@ -8,7 +8,6 @@ import { User } from '../user/user.model'
 import { Chat } from '../chat/chat.model'
 
 const sendMessageToDB = async (payload: any): Promise<IMessage> => {
-  console.log(payload)
 
   if (!mongoose.Types.ObjectId.isValid(payload.receiver)) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid Receiver ID')

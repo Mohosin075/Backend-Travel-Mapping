@@ -1,7 +1,6 @@
 import { Types } from 'mongoose'
 import { Token } from './token.model'
 const logout = async (userId: string) => {
-  console.log('Logging out user with ID:', userId)
   const res = await Token.updateOne(
     {
       user: new Types.ObjectId(userId),
@@ -12,7 +11,6 @@ const logout = async (userId: string) => {
     },
   )
 
-  console.log({ res })
 
   return res
 }

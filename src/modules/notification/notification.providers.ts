@@ -80,8 +80,6 @@ export class EmailProvider {
       }
 
       console.log(`📧 Email sent via Resend: ${result?.id}`)
-      console.log(`   To: ${recipients.join(', ')}`)
-      console.log(`   Subject: ${subject}`)
 
       return true
     } catch (error: any) {

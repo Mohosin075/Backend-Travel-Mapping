@@ -37,7 +37,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Subscription welcome email sent to: ${user.email}`)
     } catch (error) {
       console.error('Error sending subscription welcome email:', error)
     }
@@ -65,7 +64,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Trial ending email sent to: ${user.email}`)
     } catch (error) {
       console.error('Error sending trial ending email:', error)
     }
@@ -93,7 +91,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Payment success email sent to: ${user.email}`)
     } catch (error) {
       console.error('Error sending payment success email:', error)
     }
@@ -128,7 +125,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Payment failed email sent to: ${user.email}`)
     } catch (error) {
       console.error('Error sending payment failed email:', error)
     }
@@ -155,7 +151,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Subscription canceled email sent to: ${user.email}`)
     } catch (error) {
       console.error('Error sending subscription canceled email:', error)
     }
@@ -193,7 +188,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Plan change email sent to: ${user.email}`)
     } catch (error) {
       console.error('Error sending plan change email:', error)
     }
@@ -222,7 +216,6 @@ class EmailNotificationService {
       })
 
       await emailHelper.sendEmail(emailData)
-      console.log(`Invoice email sent to: ${invoice.customer_email}`)
     } catch (error) {
       console.error('Error sending invoice email:', error)
     }

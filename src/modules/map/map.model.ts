@@ -31,5 +31,6 @@ const MapSchema = new Schema<IMap, MapModel>(
 MapSchema.index({ status: 1 })             // status filter
 MapSchema.index({ isPaid: 1 })             // free vs paid filter
 MapSchema.index({ status: 1, isActive: 1 }) // active published maps
+MapSchema.index({ status: 1, isActive: 1, createdAt: -1 }) // Published catalog order
 
 export const Map = model<IMap, MapModel>('Map', MapSchema)

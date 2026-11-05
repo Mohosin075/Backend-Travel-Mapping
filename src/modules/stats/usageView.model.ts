@@ -17,5 +17,6 @@ const UsageViewSchema = new Schema(
 
 UsageViewSchema.index({ viewerKey: 1, type: 1, entityId: 1 }, { unique: true })
 UsageViewSchema.index({ type: 1, entityId: 1, lastSeenAt: -1 })
+UsageViewSchema.index({ lastSeenAt: -1 }) // Global activity ranges
 
 export const UsageView = model('UsageView', UsageViewSchema)

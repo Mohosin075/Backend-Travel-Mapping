@@ -32,5 +32,8 @@ reviewSchema.index({ reviewer: 1 })
 reviewSchema.index({ placeId: 1, reviewer: 1 })
 reviewSchema.index({ businessId: 1, reviewer: 1 })
 reviewSchema.index({ status: 1 })
+reviewSchema.index({ reviewer: 1, createdAt: -1 })
+reviewSchema.index({ placeId: 1, createdAt: -1 })
+reviewSchema.index({ businessId: 1, createdAt: -1 })
 
 export const Review = model<IReview, ReviewModel>('Review', reviewSchema)

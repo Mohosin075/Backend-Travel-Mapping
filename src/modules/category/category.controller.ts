@@ -60,12 +60,6 @@ const getCategoryById = catchAsync(async (req: Request, res: Response) => {
 
 const updateCategory = catchAsync(async (req: Request, res: Response) => {
   const id = (req.params && (req.params as any).id) || (req.body && (req.body as any).id)
-  console.log('Category update request:', {
-    method: req.method,
-    url: req.originalUrl,
-    params: req.params,
-    body: req.body && typeof req.body === 'object' ? { ...req.body } : req.body,
-  })
   if (!id) {
     return sendResponse(res, {
       statusCode: StatusCodes.BAD_REQUEST,

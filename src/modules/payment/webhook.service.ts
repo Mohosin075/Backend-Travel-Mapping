@@ -321,7 +321,6 @@ export const WebhookService = {
     body: any
     headers: any
   }): Promise<void> => {
-    console.log('🔔 Processing Checkout Session Completed:', payload)
     try {
       const signature = payload.headers['stripe-signature']
       const webhookSecret = config.stripe.paymentWebhookSecret

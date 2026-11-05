@@ -30,7 +30,6 @@ import '../offer/offer.model'
 import { localizeField } from '../../helpers/localize'
 
 const updateProfile = async (user: JwtPayload, payload: Partial<IUser>) => {
-  console.log({ payload })
   const isUserExist = await User.findOne({
     _id: user.authId,
     status: { $nin: [USER_STATUS.DELETED] },

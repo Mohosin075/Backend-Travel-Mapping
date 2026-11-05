@@ -723,7 +723,6 @@ class WebhookService {
         console.error('No userId in checkout session metadata')
         return
       }
-      console.log('session', session)
 
       // Update subscription and user if it's already created
       if (session.subscription) {

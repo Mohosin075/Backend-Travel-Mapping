@@ -1,0 +1,984 @@
+{
+  "database": "giovafilm-roadtripeado",
+  "checkedAt": "2026-11-05T08:43:24.076Z",
+  "note": "Read-only metadata and queryPlanner explains with representative filters; no executionStats or user documents.",
+  "indexes": {
+    "awardconfigs": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "awards": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "businesses": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "location.mapLocation_2dsphere",
+        "key": {
+          "location.mapLocation": "2dsphere"
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1_hasActiveSubscription_1",
+        "key": {
+          "status": 1,
+          "hasActiveSubscription": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "location.country_1_status_1_hasActiveSubscription_1",
+        "key": {
+          "location.country": 1,
+          "status": 1,
+          "hasActiveSubscription": 1
+        },
+        "unique": false
+      }
+    ],
+    "categories": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "chats": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "contacts": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "faqs": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "favourites": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "user_1",
+        "key": {
+          "user": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_type_1",
+        "key": {
+          "user": 1,
+          "type": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_map_1",
+        "key": {
+          "user": 1,
+          "map": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_place_1",
+        "key": {
+          "user": 1,
+          "place": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_offer_1",
+        "key": {
+          "user": 1,
+          "offer": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_business_1",
+        "key": {
+          "user": 1,
+          "business": 1
+        },
+        "unique": false
+      }
+    ],
+    "levelconfigs": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "level_1",
+        "key": {
+          "level": 1
+        },
+        "unique": true
+      }
+    ],
+    "maps": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "status_1",
+        "key": {
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "isPaid_1",
+        "key": {
+          "isPaid": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1_isActive_1",
+        "key": {
+          "status": 1,
+          "isActive": 1
+        },
+        "unique": false
+      }
+    ],
+    "messages": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "notifications": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "userId_1",
+        "key": {
+          "userId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "targetAudience_1",
+        "key": {
+          "targetAudience": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "type_1",
+        "key": {
+          "type": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "channel_1",
+        "key": {
+          "channel": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1",
+        "key": {
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "scheduledAt_1",
+        "key": {
+          "scheduledAt": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "isRead_1",
+        "key": {
+          "isRead": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "isArchived_1",
+        "key": {
+          "isArchived": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "userId_1_isRead_1_createdAt_-1",
+        "key": {
+          "userId": 1,
+          "isRead": 1,
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "userId_1_type_1_createdAt_-1",
+        "key": {
+          "userId": 1,
+          "type": 1,
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "targetAudience_1_createdAt_-1",
+        "key": {
+          "targetAudience": 1,
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1_scheduledAt_1",
+        "key": {
+          "status": 1,
+          "scheduledAt": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "createdAt_-1",
+        "key": {
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "category_1",
+        "key": {
+          "category": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "country_1",
+        "key": {
+          "country": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "userId_1_category_1_createdAt_-1",
+        "key": {
+          "userId": 1,
+          "category": 1,
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "category_1_createdAt_-1",
+        "key": {
+          "category": 1,
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "readBy_1",
+        "key": {
+          "readBy": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "archivedBy_1",
+        "key": {
+          "archivedBy": 1
+        },
+        "unique": false
+      }
+    ],
+    "offerredemptions": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "user_1_offer_1",
+        "key": {
+          "user": 1,
+          "offer": 1
+        },
+        "unique": false
+      }
+    ],
+    "offers": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "payments": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "userId_1",
+        "key": {
+          "userId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "paymentIntentId_1",
+        "key": {
+          "paymentIntentId": 1
+        },
+        "unique": false
+      }
+    ],
+    "places": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "location_2dsphere",
+        "key": {
+          "location": "2dsphere"
+        },
+        "unique": false
+      },
+      {
+        "name": "map_1_status_1",
+        "key": {
+          "map": 1,
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "category_1",
+        "key": {
+          "category": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1",
+        "key": {
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "country_1",
+        "key": {
+          "country": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "name_text_description_text_address_text_country_text",
+        "key": {
+          "_fts": "text",
+          "_ftsx": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "createdAt_-1",
+        "key": {
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1_createdAt_-1",
+        "key": {
+          "status": 1,
+          "createdAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "type_1_status_1",
+        "key": {
+          "type": 1,
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "discoveredBy_1",
+        "key": {
+          "discoveredBy": 1
+        },
+        "unique": false
+      }
+    ],
+    "promolinks": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "code_1",
+        "key": {
+          "code": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "recipientEmail_1",
+        "key": {
+          "recipientEmail": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "isUsed_1",
+        "key": {
+          "isUsed": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "promoType_1",
+        "key": {
+          "promoType": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "isEmailSent_1",
+        "key": {
+          "isEmailSent": 1
+        },
+        "unique": false
+      }
+    ],
+    "publics": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "reviews": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "placeId_1",
+        "key": {
+          "placeId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "reviewer_1",
+        "key": {
+          "reviewer": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "placeId_1_reviewer_1",
+        "key": {
+          "placeId": 1,
+          "reviewer": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1",
+        "key": {
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "businessId_1",
+        "key": {
+          "businessId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "businessId_1_reviewer_1",
+        "key": {
+          "businessId": 1,
+          "reviewer": 1
+        },
+        "unique": false
+      }
+    ],
+    "routeplans": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "user_1",
+        "key": {
+          "user": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_updatedAt_-1",
+        "key": {
+          "user": 1,
+          "updatedAt": -1
+        },
+        "unique": false
+      }
+    ],
+    "subscriptionplans": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "isActive_1_userTypes_1",
+        "key": {
+          "isActive": 1,
+          "userTypes": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "stripePriceId_1",
+        "key": {
+          "stripePriceId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "isActive_1",
+        "key": {
+          "isActive": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "name_1",
+        "key": {
+          "name": 1
+        },
+        "unique": true
+      }
+    ],
+    "subscriptions": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "userId_1",
+        "key": {
+          "userId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "stripeSubscriptionId_1",
+        "key": {
+          "stripeSubscriptionId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "stripeCustomerId_1",
+        "key": {
+          "stripeCustomerId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "status_1",
+        "key": {
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "currentPeriodEnd_1",
+        "key": {
+          "currentPeriodEnd": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "trialEnd_1",
+        "key": {
+          "trialEnd": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "userId_1_status_1",
+        "key": {
+          "userId": 1,
+          "status": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "businessId_1",
+        "key": {
+          "businessId": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "businessId_1_status_1",
+        "key": {
+          "businessId": 1,
+          "status": 1
+        },
+        "unique": false
+      }
+    ],
+    "supports": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "tokens": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      }
+    ],
+    "usageviewdays": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "type_1_entityId_1_lastSeenAt_-1",
+        "key": {
+          "type": 1,
+          "entityId": 1,
+          "lastSeenAt": -1
+        },
+        "unique": false
+      }
+    ],
+    "usageviews": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "viewerKey_1_type_1_entityId_1",
+        "key": {
+          "viewerKey": 1,
+          "type": 1,
+          "entityId": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "type_1_entityId_1_lastSeenAt_-1",
+        "key": {
+          "type": 1,
+          "entityId": 1,
+          "lastSeenAt": -1
+        },
+        "unique": false
+      }
+    ],
+    "users": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "email_1",
+        "key": {
+          "email": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "location_2dsphere",
+        "key": {
+          "location": "2dsphere"
+        },
+        "unique": false
+      }
+    ],
+    "visiteds": [
+      {
+        "name": "_id_",
+        "key": {
+          "_id": 1
+        },
+        "unique": true
+      },
+      {
+        "name": "user_1",
+        "key": {
+          "user": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_visitedAt_-1",
+        "key": {
+          "user": 1,
+          "visitedAt": -1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_place_1",
+        "key": {
+          "user": 1,
+          "place": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_business_1",
+        "key": {
+          "user": 1,
+          "business": 1
+        },
+        "unique": false
+      },
+      {
+        "name": "user_1_type_1",
+        "key": {
+          "user": 1,
+          "type": 1
+        },
+        "unique": false
+      }
+    ]
+  },
+  "plans": [
+    {
+      "label": "favorites_by_user",
+      "collection": "favourites",
+      "stages": [
+        "SORT",
+        "FETCH",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "user_1"
+      ]
+    },
+    {
+      "label": "own_reviews",
+      "collection": "reviews",
+      "stages": [
+        "SORT",
+        "FETCH",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "reviewer_1"
+      ]
+    },
+    {
+      "label": "place_public_reviews",
+      "collection": "reviews",
+      "stages": [
+        "SORT",
+        "FETCH",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "placeId_1"
+      ]
+    },
+    {
+      "label": "active_users",
+      "collection": "users",
+      "stages": [
+        "LIMIT",
+        "COLLSCAN"
+      ],
+      "indexes": []
+    },
+    {
+      "label": "usage_global_recent",
+      "collection": "usageviews",
+      "stages": [
+        "LIMIT",
+        "COLLSCAN"
+      ],
+      "indexes": []
+    },
+    {
+      "label": "usage_daily_global_recent",
+      "collection": "usageviewdays",
+      "stages": [
+        "LIMIT",
+        "COLLSCAN"
+      ],
+      "indexes": []
+    },
+    {
+      "label": "entity_viewers",
+      "collection": "usageviews",
+      "stages": [
+        "LIMIT",
+        "FETCH",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "type_1_entityId_1_lastSeenAt_-1"
+      ]
+    },
+    {
+      "label": "sales_reports",
+      "collection": "payments",
+      "stages": [
+        "LIMIT",
+        "COLLSCAN"
+      ],
+      "indexes": []
+    },
+    {
+      "label": "offer_redeemers",
+      "collection": "offerredemptions",
+      "stages": [
+        "SORT",
+        "COLLSCAN"
+      ],
+      "indexes": []
+    },
+    {
+      "label": "published_map_places",
+      "collection": "places",
+      "stages": [
+        "LIMIT",
+        "FETCH",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "map_1_status_1"
+      ]
+    },
+    {
+      "label": "own_routes",
+      "collection": "routeplans",
+      "stages": [
+        "LIMIT",
+        "FETCH",
+        "IXSCAN"
+      ],
+      "indexes": [
+        "user_1_updatedAt_-1"
+      ]
+    }
+  ]
+}

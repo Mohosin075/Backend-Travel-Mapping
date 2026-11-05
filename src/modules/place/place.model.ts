@@ -86,6 +86,7 @@ const PlaceSchema = new Schema<IPlace, PlaceModel>(
 
 PlaceSchema.index({ location: '2dsphere' }) // important for geo queries!
 PlaceSchema.index({ map: 1, status: 1 })    // most common filter: map + status
+PlaceSchema.index({ map: 1, status: 1, createdAt: -1 }) // Map list with default sort
 PlaceSchema.index({ category: 1 })          // category filter
 PlaceSchema.index({ status: 1 })            // status filter alone
 PlaceSchema.index({ country: 1 })           // country filter

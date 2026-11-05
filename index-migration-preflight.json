@@ -1,0 +1,688 @@
+{
+  "startedAt": "2026-11-05T08:57:03.928Z",
+  "database": "giovafilm-roadtripeado",
+  "stats": {
+    "users": {
+      "count": 53,
+      "size": 61105,
+      "storageSize": 69632,
+      "totalIndexSize": 131072
+    },
+    "usageviews": {
+      "count": 751,
+      "size": 144564,
+      "storageSize": 118784,
+      "totalIndexSize": 204800
+    },
+    "usageviewdays": {
+      "count": 17,
+      "size": 3688,
+      "storageSize": 36864,
+      "totalIndexSize": 94208
+    },
+    "payments": {
+      "count": 28,
+      "size": 35879,
+      "storageSize": 53248,
+      "totalIndexSize": 151552
+    },
+    "offerredemptions": {
+      "count": 55,
+      "size": 8195,
+      "storageSize": 36864,
+      "totalIndexSize": 114688
+    },
+    "favourites": {
+      "count": 85,
+      "size": 10318,
+      "storageSize": 36864,
+      "totalIndexSize": 278528
+    },
+    "reviews": {
+      "count": 23,
+      "size": 15022,
+      "storageSize": 53248,
+      "totalIndexSize": 319488
+    },
+    "places": {
+      "count": 1107,
+      "size": 2207685,
+      "storageSize": 1064960,
+      "totalIndexSize": 962560
+    },
+    "maps": {
+      "count": 5,
+      "size": 25907,
+      "storageSize": 53248,
+      "totalIndexSize": 167936
+    }
+  },
+  "before": {
+    "users": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "email": 1
+        },
+        "name": "email_1",
+        "background": true,
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "location": "2dsphere"
+        },
+        "name": "location_2dsphere",
+        "background": true,
+        "2dsphereIndexVersion": 3
+      },
+      {
+        "v": 2,
+        "key": {
+          "lastActiveAt": -1
+        },
+        "name": "lastActiveAt_-1",
+        "background": true
+      }
+    ],
+    "usageviews": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "viewerKey": 1,
+          "type": 1,
+          "entityId": 1
+        },
+        "name": "viewerKey_1_type_1_entityId_1",
+        "background": true,
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1,
+          "entityId": 1,
+          "lastSeenAt": -1
+        },
+        "name": "type_1_entityId_1_lastSeenAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "lastSeenAt": -1
+        },
+        "name": "lastSeenAt_-1",
+        "background": true
+      }
+    ],
+    "usageviewdays": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1,
+          "entityId": 1,
+          "lastSeenAt": -1
+        },
+        "name": "type_1_entityId_1_lastSeenAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "lastSeenAt": -1
+        },
+        "name": "lastSeenAt_-1",
+        "background": true
+      }
+    ],
+    "payments": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "userId": 1
+        },
+        "name": "userId_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "paymentIntentId": 1
+        },
+        "name": "paymentIntentId_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "status_1_createdAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "mapId": 1,
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "mapId_1_status_1_createdAt_-1",
+        "background": true
+      }
+    ],
+    "offerredemptions": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "offer": 1
+        },
+        "name": "user_1_offer_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "offer": 1,
+          "redemptionTime": -1
+        },
+        "name": "offer_1_redemptionTime_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "redemptionTime": -1
+        },
+        "name": "redemptionTime_-1",
+        "background": true
+      }
+    ],
+    "favourites": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1
+        },
+        "name": "user_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "type": 1
+        },
+        "name": "user_1_type_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "map": 1
+        },
+        "name": "user_1_map_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "place": 1
+        },
+        "name": "user_1_place_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "offer": 1
+        },
+        "name": "user_1_offer_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "business": 1
+        },
+        "name": "user_1_business_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "user": 1,
+          "createdAt": -1
+        },
+        "name": "user_1_createdAt_-1",
+        "background": true
+      }
+    ],
+    "reviews": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "placeId": 1
+        },
+        "name": "placeId_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "reviewer": 1
+        },
+        "name": "reviewer_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "placeId": 1,
+          "reviewer": 1
+        },
+        "name": "placeId_1_reviewer_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1
+        },
+        "name": "status_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "businessId": 1
+        },
+        "name": "businessId_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "businessId": 1,
+          "reviewer": 1
+        },
+        "name": "businessId_1_reviewer_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "reviewer": 1,
+          "createdAt": -1
+        },
+        "name": "reviewer_1_createdAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "placeId": 1,
+          "createdAt": -1
+        },
+        "name": "placeId_1_createdAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "businessId": 1,
+          "createdAt": -1
+        },
+        "name": "businessId_1_createdAt_-1",
+        "background": true
+      }
+    ],
+    "places": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "location": "2dsphere"
+        },
+        "name": "location_2dsphere",
+        "background": true,
+        "2dsphereIndexVersion": 3
+      },
+      {
+        "v": 2,
+        "key": {
+          "map": 1,
+          "status": 1
+        },
+        "name": "map_1_status_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "category": 1
+        },
+        "name": "category_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1
+        },
+        "name": "status_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "country": 1
+        },
+        "name": "country_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "_fts": "text",
+          "_ftsx": 1
+        },
+        "name": "name_text_description_text_address_text_country_text",
+        "background": true,
+        "weights": {
+          "address": 5,
+          "country": 1,
+          "description": 2,
+          "name": 10
+        },
+        "default_language": "english",
+        "language_override": "language",
+        "textIndexVersion": 3
+      },
+      {
+        "v": 2,
+        "key": {
+          "createdAt": -1
+        },
+        "name": "createdAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "status_1_createdAt_-1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1,
+          "status": 1
+        },
+        "name": "type_1_status_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "discoveredBy": 1
+        },
+        "name": "discoveredBy_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "map": 1,
+          "status": 1,
+          "createdAt": -1
+        },
+        "name": "map_1_status_1_createdAt_-1",
+        "background": true
+      }
+    ],
+    "maps": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1
+        },
+        "name": "status_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "isPaid": 1
+        },
+        "name": "isPaid_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "isActive": 1
+        },
+        "name": "status_1_isActive_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "status": 1,
+          "isActive": 1,
+          "createdAt": -1
+        },
+        "name": "status_1_isActive_1_createdAt_-1",
+        "background": true
+      }
+    ]
+  },
+  "actions": [
+    {
+      "collection": "users",
+      "model": "src/modules/user/user.model.ts",
+      "key": {
+        "lastActiveAt": -1
+      },
+      "name": "lastActiveAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "usageviews",
+      "model": "src/modules/stats/usageView.model.ts",
+      "key": {
+        "lastSeenAt": -1
+      },
+      "name": "lastSeenAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "usageviewdays",
+      "model": "src/modules/stats/usageViewDay.model.ts",
+      "key": {
+        "lastSeenAt": -1
+      },
+      "name": "lastSeenAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "payments",
+      "model": "src/modules/payment/payment.model.ts",
+      "key": {
+        "status": 1,
+        "createdAt": -1
+      },
+      "name": "status_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "payments",
+      "model": "src/modules/payment/payment.model.ts",
+      "key": {
+        "mapId": 1,
+        "status": 1,
+        "createdAt": -1
+      },
+      "name": "mapId_1_status_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "offerredemptions",
+      "model": "src/modules/offer/offerRedemption.model.ts",
+      "key": {
+        "offer": 1,
+        "redemptionTime": -1
+      },
+      "name": "offer_1_redemptionTime_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "offerredemptions",
+      "model": "src/modules/offer/offerRedemption.model.ts",
+      "key": {
+        "redemptionTime": -1
+      },
+      "name": "redemptionTime_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "favourites",
+      "model": "src/modules/favourite/favourite.model.ts",
+      "key": {
+        "user": 1,
+        "createdAt": -1
+      },
+      "name": "user_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "reviews",
+      "model": "src/modules/review/review.model.ts",
+      "key": {
+        "reviewer": 1,
+        "createdAt": -1
+      },
+      "name": "reviewer_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "reviews",
+      "model": "src/modules/review/review.model.ts",
+      "key": {
+        "placeId": 1,
+        "createdAt": -1
+      },
+      "name": "placeId_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "reviews",
+      "model": "src/modules/review/review.model.ts",
+      "key": {
+        "businessId": 1,
+        "createdAt": -1
+      },
+      "name": "businessId_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "places",
+      "model": "src/modules/place/place.model.ts",
+      "key": {
+        "map": 1,
+        "status": 1,
+        "createdAt": -1
+      },
+      "name": "map_1_status_1_createdAt_-1",
+      "action": "skip_existing"
+    },
+    {
+      "collection": "maps",
+      "model": "src/modules/map/map.model.ts",
+      "key": {
+        "status": 1,
+        "isActive": 1,
+        "createdAt": -1
+      },
+      "name": "status_1_isActive_1_createdAt_-1",
+      "action": "skip_existing"
+    }
+  ],
+  "steps": [],
+  "mode": "dry_run"
+}

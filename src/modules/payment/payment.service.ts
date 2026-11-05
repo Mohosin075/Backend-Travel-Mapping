@@ -109,9 +109,6 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
       expand: ['payment_intent'],
     })
 
-    console.log('🔍 Verifying Checkout Session:', stripeSession.id)
-    console.log('🔍 Payment Intent:', stripeSession.payment_intent)
-    console.log('🔍 Metadata:', stripeSession.metadata)
 
     const paymentIntentId =
       stripeSession.payment_intent &&

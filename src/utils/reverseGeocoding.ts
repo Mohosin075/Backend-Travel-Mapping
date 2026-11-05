@@ -16,7 +16,6 @@ export const getCountryFromCoordinates = async (
     const agent = new https.Agent({ family: 4 })
     const API_KEY = config.server_map_api_key
 
-    console.log('API_KEY', API_KEY)
 
     const response = await axios.get(
       'https://maps.googleapis.com/maps/api/geocode/json',
@@ -42,11 +41,6 @@ export const getCountryFromCoordinates = async (
       }
     }
 
-    console.log('Google API Status:', response.data.status)
-    if (response.data.error_message) {
-      console.log('Google API Error:', response.data.error_message)
-    }
-    console.log('No country found for coordinates:', lat, lng)
     return null
   } catch (error) {
     console.error('Reverse geocoding error:', error)

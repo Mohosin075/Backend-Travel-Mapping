@@ -64,7 +64,6 @@ passport.use(
 
 // Serialize the user
 passport.serializeUser((data: any, done) => {
-  console.log('Serializing user:', data)
   // If we have a DB user, store the _id; otherwise, store the whole object for social-only login
   if (data.user?._id) {
     done(null, { type: 'db', id: data.user._id.toString() })
@@ -75,7 +74,6 @@ passport.serializeUser((data: any, done) => {
 
 // Deserialize the user
 passport.deserializeUser(async (payload: any, done) => {
-  console.log('Deserializing payload:', payload)
   try {
     if (!payload) return done(null, null)
 

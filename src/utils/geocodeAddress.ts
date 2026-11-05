@@ -37,7 +37,6 @@ export const geocodeAddress = async (
       }
     }
 
-    console.log('No coordinates found for:', location)
     return null
   } catch (error) {
     console.error('Geocoding error:', error)

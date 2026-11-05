@@ -10,5 +10,6 @@ const schema = new Schema({
   lastSeenAt: { type: Date, required: true },
 })
 schema.index({ type: 1, entityId: 1, lastSeenAt: -1 })
+schema.index({ lastSeenAt: -1 }) // Global historical activity ranges
 
 export const UsageViewDay = model('UsageViewDay', schema)
