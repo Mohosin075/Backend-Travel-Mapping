@@ -1,93 +1,23 @@
-GENERAL VERSION:
-
 Dashboard:
 
-1. Map editors are not allowed to edit maps if they are as drafts. It should allow them to edit them even if they are as a draft.
-- solved
-2. On the users and roles page, when I enter a user's profile and get all the unlocked prizes, I would like them to come out in order and those I have not yet unlocked do not come out.
-- solved
-3. On the user and role page, when I enter the profile of a user, in "use activity" put the option to see more and see less.
-- solved
-4. On the reports and statistics page, in the "most viewed places" section where it says the amount, let me see who these users are. Same with redeemed offers and the most used maps.
-- solved
-5. Change the orange colors of the dahboard pages to the yellow of Roadtripeado to respect the branding of the brand.
-- solved
-Users:
+1. On the reports and statistics page, in the "most viewed places" section where it says the amount, it does not allow me to see all the users they have seen, I need these data to be as accurate as possible to make strategic decisions.
 
-1. I would like the profile picture of people who do not have a profile picture to be like, for example, the automatic photo of whatsapp when a person has not yet posted a photo. But let that default photo match the style and branding of road tripped.
-- solved
-2. If a selected country is, the map should appear in the corresponding country. Currently, when I go online and open the website, it appears in my location instead of the location of the selected map.
-- solved
-Users without buying a map:
+2. On the map of the places page, when you try to drag, the pop-up comes out and does not allow you to drag the pin correctly. Please check that out.
 
-1. When you type a municipality in the search engine, all the pins of that municipality can leave as long as they are blocked. Currently, only businesses come out.
-- solved
-2. Users who are map editors, despite the fact that the places on the maps they have not bought are blocked, but it allows them to see the info of the places by clicking on the pins. Since they are editors, they can only see the places on the maps, which are editors.
-- solved
+3. On the reports and statistics page, in general, the data of people who are active or have seen the places is not updated in real time. Because even if I connect, I do not go out on the statistics. Also the people who put their profile anonymous, who are only anonymous for the users, but for the administrators no.
+
+4. The search engine on the "places" page is not working properly, I type "the written stone" and the place I am looking for does not come out, even though it is saved correctly.
 
 
-GENERAL VERSION:
 
 Users:
 
-1. If I have selected the map of Costa Rica, when I go to the "offers" page, you can see the offers from other countries. Only the offers of the corresponding country should be seen, such as on the "places" and "maps" page.
-- solved
-2. On the "My Routes" page, when the user is editing the route and "save route," it should be saved and directed to the non-editable page.
-- solved
-3. On the "my routes" page, when you enter the editable and non-editable path, you can not see the "x" to exit the page, since it is covered with the main menu. It also happens when you add a new stop.
-- solved
-Dashboard:
+1. On the "visited places" and "My Routes" page, delete the "all countries" option from the filter.
 
-4. On the map of the places page, it does not let me drag the pins to change their location.
-- solved (code and automated tests; live mouse/touch verification pending)
+2. On the "favorite places" page, allow you to change countries, such as on the "places, maps, offers" page, and see the places in the corresponding country.
 
-5. I need that when editing a place, the checkmark of the "always open" option is selected or deselected depending on what has been previously granted.
-- solved
+3. That the reviews that the user writes, that it looks as it sees the reviews of the other users. (with the profile picture, username, same organization but with the "edit review" button on the top right side where it does not bother but that it is understood that it is there.
 
+MOBILE VERSION:
 
-Dashboard: 1. On the reports and statistics page, in the "most viewed places" section, the view count does not allow me to see the full list of users who have viewed those places. 
-- solved (full list of stored identifiable viewers; identities of anonymous or untracked historical views cannot be recovered)
-
-2. Replace the orange colors throughout the dashboard pages with the "Roadtripeado" yellow to ensure brand consistency. 
-- solved
-
-3. On the map within the "places" page, implement a 2-second press-and-hold delay before dragging is enabled (reverting to the previous behavior). 
-- solved (2-second delay verified by automated tests; live device verification pending)
-
-4. On the reports and statistics page, data regarding active users or those who have viewed specific places is not updated in real-time; for instance, I do not appear in the statistics even when I am logged in. Additionally, for users who have set their profiles to "anonymous," this should only apply to other users—not to administrators. 
-- solved (authenticated activity heartbeat, live refresh with 30-second polling fallback, and admin identity visibility; automated tests passed; live verification pending)
-
-5. On the "places" page, when editing a place saved as a draft, the "save as draft" button is missing, forcing the user to publish it instead. While the "save as draft" button appears when editing via the map view, it is absent in the list view. 
-- solved (list editor preserves Draft status and offers Save as Draft; automated regression passed)
-
-6. On the "places" page map, when editing a place, certain fields—such as "difficulty," "hiking time," etc.—do not display the previously selected information upon re-entering the edit screen. This creates the impression that the data was never entered or saved. For example, check the "Two Waters Waterfall" (Cascada Two Waters) in the Costa Rica map; although its difficulty is set to "medium," this selection is not visible when opening the entry to edit it again. 
-- solved (translated difficulty, hiking time, entry cost and atmosphere restored in edit forms; automated regression passed; named production record not accessed)
-
-7. The search function on the "places" page is not working correctly; when I type "La Piedra Escrita," the intended location does not appear, even though it is correctly saved in the system. 
-- solved (dashboard records no longer hidden by public deduplication or pending-status filtering; server-side map search added; La Piedra Escrita regression passed)
-
-Users: 
-
-1. On the "My Routes" page, allow users to switch countries—similar to the "Places, Maps, Offers" page—so that the routes for the selected country are displayed. 
-- solved (saved country selection, selected country first, and server-side route filtering before pagination; routes spanning countries appear for each matching country)
-
-2. On the "Visited Places" page, add a filter by country, ensuring the selected country appears first (consistent with the "Places, Offers, Maps" page). 
-- solved (shared country selector, selected country first, and place/business country filtering before pagination)
-
-3. Users currently earn 10 points for marking places as "visited"; remove the option to earn points for this action. 
-- solved (mark/unmark no longer changes points or levels; existing earned points preserved; EN/ES rewards copy updated)
-
-MOBILE VERSION: 
-
-1. In the "burger" menu, remove the "View Profile" option.
-- solved (removed from mobile hamburger menu)
-
-CODEBASE AUDIT FOLLOW-UP (2026-11-05):
-See CODEBASE_AUDIT.md for evidence, fixes and validation scope.
-- fixed: duplicate business view tracking, mock revenue fallback, editor route-write assignment bypass, and incorrect references for new visits to Business-type Place records.
-- pending: enforce current place/map access on populated route read responses.
-- pending: hide private contributor identity and discoveredByName from other users in place list/detail responses.
-- pending: paginate active/registered report user lists beyond the current 100-user cap.
-- pending data review: existing malformed visit references and historically inflated business view counts.
-- needs reporting-rule clarification: taxesCollected is currently calculated as 10% of revenue, not recorded tax amounts.
-- pending integration verification: live browser/device checks and production deployment status.
+2. By pressing the profile button where all the options of "visited places, my routes, contributions, etc." come out, the Close session button goes down and up next to the other options when the user swipe up or swip down.

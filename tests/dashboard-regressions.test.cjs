@@ -41,7 +41,10 @@ function stats(rows, users, redemptions = []) {
     mongoose: { default: { isValidObjectId: id => /^[a-f\d]{24}$/i.test(id) } },
     '../../errors/ApiError': { default: ApiError },
     'http-status-codes': { StatusCodes: { BAD_REQUEST: 400 } },
-    './usageView.model': { UsageView: { find: query => { queries.push(query); return chain(rows) } } },
+    './usage-reporting': { entityViewers: async (type, entityId, range) => {
+      queries.push({ type, entityId, ...(range ? { lastSeenAt: range } : {}) })
+      return rows
+    } },
     '../user/user.model': { User: { find: () => chain(users) } },
     '../offer/offerRedemption.model': { OfferRedemption: { find: query => { queries.push(query); return chain(redemptions) } } },
   })

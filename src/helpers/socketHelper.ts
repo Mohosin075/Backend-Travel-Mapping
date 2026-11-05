@@ -2,21 +2,19 @@ import colors from 'colors'
 import { Server } from 'socket.io'
 import { recordUniqueUsage } from '../modules/stats/usage.service'
 import { UsageView } from '../modules/stats/usageView.model'
+import { UsageViewDay } from '../modules/stats/usageViewDay.model'
 import { recordAuthenticatedActivity } from '../modules/stats/activity.service'
+import { notifyStatsUpdated } from '../modules/stats/stats-events'
 
 import { jwtHelper } from './jwtHelper'
 import config from '../config'
 import { Secret } from 'jsonwebtoken'
 
 const socket = (io: Server) => {
-  let statsUpdateTimer: ReturnType<typeof setTimeout> | undefined
-  const notifyStats = () => {
-    if (statsUpdateTimer) return
-    statsUpdateTimer = setTimeout(() => { statsUpdateTimer = undefined; io.emit('stats-updated') }, 3000)
-  }
-  UsageView.syncIndexes().catch(error => {
-    console.error('Failed to sync usage view indexes:', error)
-  })
+  const notifyStats = () => notifyStatsUpdated(io)
+  // createIndexes is additive; syncIndexes could drop production indexes.
+  UsageView.createIndexes().catch(error => console.error('Failed to create usage indexes:', error))
+  UsageViewDay.createIndexes().catch(error => console.error('Failed to create daily usage indexes:', error))
 
   io.on('connection', socket => {
     socket.on('track-activity', async (payload?: { token?: string }) => {

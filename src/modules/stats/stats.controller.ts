@@ -3,6 +3,27 @@ import { StatusCodes } from 'http-status-codes'
 import catchAsync from '../../shared/catchAsync'
 import sendResponse from '../../shared/sendResponse'
 import { StatsService } from './stats.service'
+import { recordAuthenticatedActivity } from './activity.service'
+import { recordUniqueUsage } from './usage.service'
+import { notifyStatsUpdated } from './stats-events'
+import type { Socket, Server } from 'socket.io'
+
+const notify = () => notifyStatsUpdated((global as typeof globalThis & { io?: Server }).io)
+
+const recordActivity = catchAsync(async (req: Request, res: Response) => {
+  if (await recordAuthenticatedActivity(req.headers.authorization)) notify()
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Activity recorded', data: null })
+})
+
+const recordUsage = catchAsync(async (req: Request, res: Response) => {
+  // HTTP fallback works when a proxy blocks sockets. Never trust a body-supplied identity.
+  const { type, id, visitorId } = req.body || {}
+  await recordUniqueUsage({ handshake: { auth: {}, query: {}, headers: {} } } as Socket, {
+    type, id, visitorId, token: req.headers.authorization || '',
+  })
+  notify()
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Usage recorded', data: null })
+})
 
 const getDashboardData = catchAsync(async (req: Request, res: Response) => {
   const result = await StatsService.getDashboardData()
@@ -57,6 +78,8 @@ const getEntityUsers = catchAsync(async (req: Request, res: Response) => {
 })
 
 export const StatsController = {
+  recordActivity,
+  recordUsage,
   getDashboardData,
   getReportsData,
   searchReportEntities,

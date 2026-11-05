@@ -6,6 +6,7 @@ import { BusinessService } from '../business/business.service'
 import { MapService } from '../map/map.service'
 import { PlaceService } from '../place/place.service'
 import { UsageView } from './usageView.model'
+import { UsageViewDay } from './usageViewDay.model'
 
 const VIEW_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -58,6 +59,8 @@ const viewerKeys = (
     // on the same device/browser are tracked independently.
     return [`user:${authId}`]
   }
+  // A failed account token is not a genuine guest. Let HTTP refresh/retry it.
+  if (payload?.token?.trim()) return []
 
   const guestId = String(payload?.visitorId || '').trim()
   if (guestId && guestId.length >= 8 && guestId.length <= 80) {
@@ -101,6 +104,20 @@ export const recordUniqueUsage = async (
   if (!type || !isObjectId(entityId) || keys.length === 0) return
 
   const now = new Date()
+  const recordDay = async (seenAt = now) => {
+    // Match the server calendar used by the report date filters.
+    const day = `${seenAt.getFullYear()}-${seenAt.getMonth() + 1}-${seenAt.getDate()}`
+    const _id = `${type}:${entityId}:${keys[0]}:${day}`
+    try {
+      await UsageViewDay.updateOne({ _id }, {
+        $setOnInsert: { viewerKey: keys[0], type, entityId },
+        $max: { lastSeenAt: seenAt },
+      }, { upsert: true })
+    } catch (error: any) {
+      if (error?.code !== 11000) throw error
+      await UsageViewDay.updateOne({ _id }, { $max: { lastSeenAt: seenAt } })
+    }
+  }
   const cutoff = new Date(now.getTime() - VIEW_WINDOW_MS)
   const existing = await UsageView.find({
     viewerKey: { $in: keys },
@@ -111,6 +128,10 @@ export const recordUniqueUsage = async (
     .lean()
 
   const latest = existing[0]
+  // Keep the last known legacy visit before refreshing the lifetime record.
+  if (latest?.lastSeenAt && latest.lastSeenAt.toDateString() !== now.toDateString()) {
+    await recordDay(latest.lastSeenAt)
+  }
   const lastCountedAt = latest?.lastCountedAt || latest?.lastSeenAt
   if (latest && lastCountedAt && lastCountedAt >= cutoff) {
     // Refresh presence on every visit without incrementing the daily view counter.
@@ -119,6 +140,7 @@ export const recordUniqueUsage = async (
     }
     await UsageView.updateOne({ _id: latest._id }, { $max: { lastSeenAt: now } })
     await syncViewerKeys(keys, type, entityId, latest.lastSeenAt)
+    await recordDay()
     return
   }
 
@@ -129,7 +151,7 @@ export const recordUniqueUsage = async (
         { $set: { lastSeenAt: now, lastCountedAt: now } },
         { new: true },
       )
-      if (!updated) return
+      if (!updated) { await recordDay(); return }
     } else {
       await UsageView.create({
         viewerKey: keys[0],
@@ -140,7 +162,7 @@ export const recordUniqueUsage = async (
       })
     }
   } catch (error: any) {
-    if (error?.code === 11000) return
+    if (error?.code === 11000) { await recordDay(); return }
     throw error
   }
 
@@ -156,4 +178,5 @@ export const recordUniqueUsage = async (
     })
     throw error
   }
+  await recordDay()
 }

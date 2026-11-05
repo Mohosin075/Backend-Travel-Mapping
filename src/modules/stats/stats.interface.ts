@@ -39,6 +39,8 @@ export interface ISalesAndTaxesStats {
 }
 
 export interface IUsageItem {
+  countMetric?: 'unique_viewers';
+  totalViews?: number;
   entityType?: 'place' | 'business' | 'map' | 'offer';
   id?: string;
   name: string;

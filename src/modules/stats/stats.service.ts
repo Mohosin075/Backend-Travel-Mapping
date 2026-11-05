@@ -7,7 +7,7 @@ import { OfferRedemption } from '../offer/offerRedemption.model'
 import { User } from '../user/user.model'
 import { Business } from '../business/business.model'
 import { Payment } from '../payment/payment.model'
-import { UsageView } from './usageView.model'
+import { rankedViewers, entityViewers, distinctViewers } from './usage-reporting'
 import { Visited } from '../visited/visited.model'
 import { Review } from '../review/review.model'
 import mongoose from 'mongoose'
@@ -514,120 +514,39 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     allowedMapDocs.map(m => [String(m._id), m]),
   )
 
-  let mostViewedMaps: IUsageItem[] = []
-  if (dateRange) {
-    const mapAgg = await UsageView.aggregate([
-      {
-        $match: {
-          type: 'map',
-          entityId: { $in: allowedMapIds },
-          lastSeenAt: dateRange,
-        },
-      },
-      { $group: { _id: '$entityId', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 20 },
-    ])
-
-    if (mapAgg.length > 0) {
-      mostViewedMaps = mapAgg.map(r => {
-        const doc = mapDocMap.get(String(r._id))
-        const spotsFromPlaces = mapPlaceCountMap.get(String(r._id)) || 0
-        return {
-          id: String(r._id),
-          name: doc?.name ? localizeField(doc.name) : 'Unknown Map',
-          count: r.count || 0,
-          placesCount: spotsFromPlaces,
-          country: doc?.country,
-        }
-      })
-    } else {
-      // Graceful fallback to allowed maps with 0 views in this date window
-      mostViewedMaps = allowedMapDocs.slice(0, 20).map(m => {
-        const spotsFromPlaces = mapPlaceCountMap.get(String(m._id)) || 0
-        return {
-          id: String(m._id),
-          name: localizeField(m.name),
-          count: 0,
-          placesCount: spotsFromPlaces,
-          country: m.country,
-        }
-      })
+  // Counts and viewer drilldowns use the same deduplicated records, not lifetime
+  // counters that also include repeat visits and unidentifiable historical opens.
+  const [mapRanks, placeRanks] = await Promise.all([
+    rankedViewers('map', allowedMapIds, dateRange),
+    rankedViewers('place', allowedPlaceIds, dateRange),
+  ])
+  const rankedMapIds = new Set(mapRanks.map(r => String(r._id)))
+  const mapsWithCounts = [...mapRanks, ...allowedMapDocs.filter(m => !rankedMapIds.has(String(m._id))).map(m => ({ _id: m._id, count: 0 }))]
+    .sort((a, b) => b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
+  const mostViewedMaps: IUsageItem[] = mapsWithCounts.map(r => {
+    const doc = mapDocMap.get(String(r._id))
+    return {
+      id: String(r._id), name: localizeField(doc?.name), count: r.count,
+      placesCount: mapPlaceCountMap.get(String(r._id)) || 0, country: doc?.country,
+      countMetric: 'unique_viewers' as const,
+      ...(!dateRange ? { totalViews: doc?.viewCount || 0 } : {}),
     }
-  } else {
-    const mostViewedMapsRaw = await Map.find(mapFilter)
-      .sort({ viewCount: -1 })
-      .limit(20)
-      .select('name viewCount country places')
-      .lean()
-
-    const rawOids = mostViewedMapsRaw.map(m => m._id)
-    const rawCounts = await Place.aggregate([
-      { $match: { map: { $in: rawOids } } },
-      { $group: { _id: '$map', count: { $sum: 1 } } },
-    ])
-    const rawCountMap = new globalThis.Map<string, number>(rawCounts.map(p => [String(p._id), p.count]))
-
-    mostViewedMaps = mostViewedMapsRaw.map(m => {
-      const spotsFromPlaces = rawCountMap.get(String(m._id)) || 0
-      return {
-        id: String(m._id),
-        name: localizeField(m.name),
-        count: (m as any).viewCount || 0,
-        placesCount: spotsFromPlaces,
-        country: m.country,
-      }
-    })
-  }
-
-  let mostOpenedPlaces: IUsageItem[] = []
-  if (dateRange) {
-    const placeAgg = await UsageView.aggregate([
-      {
-        $match: {
-          type: 'place',
-          entityId: { $in: allowedPlaceIds },
-          lastSeenAt: dateRange,
-        },
-      },
-      { $group: { _id: '$entityId', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 20 },
-    ])
-
-    if (placeAgg.length > 0) {
-      const placeIds = placeAgg.map(r => new mongoose.Types.ObjectId(r._id))
-      const places = await Place.find({ _id: { $in: placeIds } }).select('name').lean()
-      const nameMap = new globalThis.Map<string, string>(places.map(p => [p._id.toString(), localizeField(p.name)]))
-      mostOpenedPlaces = placeAgg.map(r => ({
-        id: String(r._id),
-        name: nameMap.get(String(r._id)) || 'Unknown Place',
-        count: r.count || 0,
-      }))
-    } else {
-      mostOpenedPlaces = allowedPlaceDocs.slice(0, 20).map(p => ({
-        id: String(p._id),
-        name: localizeField(p.name),
-        count: 0,
-      }))
-    }
-  } else {
-    const mostOpenedPlacesRaw = await Place.find(placeFilter)
-      .sort({ openCount: -1 })
-      .limit(20)
-      .select('name openCount')
-      .lean()
-    mostOpenedPlaces = mostOpenedPlacesRaw.map(p => ({
-      id: String(p._id),
-      name: localizeField(p.name),
-      count: (p as any).openCount || 0,
-    }))
-  }
+  })
+  const placeDocMap = new globalThis.Map(allowedPlaceDocs.map(p => [String(p._id), p]))
+  const rankedPlaceIds = new Set(placeRanks.map(r => String(r._id)))
+  const placesWithCounts = [...placeRanks, ...allowedPlaceDocs.filter(p => !rankedPlaceIds.has(String(p._id))).map(p => ({ _id: p._id, count: 0 }))]
+    .sort((a, b) => b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
+  let mostOpenedPlaces: IUsageItem[] = placesWithCounts.map(r => ({
+    id: String(r._id), name: localizeField(placeDocMap.get(String(r._id))?.name),
+    count: r.count, countMetric: 'unique_viewers' as const,
+    ...(!dateRange ? { totalViews: placeDocMap.get(String(r._id))?.openCount || 0 } : {}),
+  }))
   if (usagePlace) {
-    if (dateRange && usagePlace.entityType === 'business') {
-      usagePlace.count = await UsageView.countDocuments({
-        type: 'business', entityId: usagePlace.id, lastSeenAt: dateRange,
-      })
+    if (usagePlace.entityType === 'business') {
+      const ranks = await rankedViewers('business', [usagePlace.id!], dateRange)
+      if (!dateRange) usagePlace.totalViews = usagePlace.count
+      usagePlace.count = ranks[0]?.count || 0
+      usagePlace.countMetric = 'unique_viewers'
     }
     mostOpenedPlaces = [usagePlace]
   }
@@ -811,12 +730,24 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   }
 
   // Active user distinct query filters
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const activityEnd = Math.min(Date.now(), dateRange?.$lte?.getTime() ?? Date.now())
+  const activityStart = (days: number) => new Date(Math.max(
+    activityEnd - days * 24 * 60 * 60 * 1000,
+    dateRange?.$gte?.getTime() ?? 0,
+  ))
+  const oneDayAgo = activityStart(1)
+  const sevenDaysAgo = activityStart(7)
+  const thirtyDaysAgo = activityStart(30)
 
   const usageEntityMatch: Record<string, any> = {}
-  if (countryRegex || categoryOid || hasEntity) {
+  if (hasEntity) {
+    if (['map', 'place', 'business'].includes(query.entityType)) {
+      usageEntityMatch.type = query.entityType
+      usageEntityMatch.entityId = String(query.entityId)
+    } else {
+      usageEntityMatch._id = { $in: [] }
+    }
+  } else if (countryRegex || categoryOid) {
     const orConditions: any[] = []
     if (allowedMapIds.length > 0) {
       orConditions.push({ type: 'map', entityId: { $in: allowedMapIds } })
@@ -857,11 +788,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     userCountFilter['address.country'] = countryRegex
   }
 
-  let totalRegisteredUsers = await User.countDocuments(userCountFilter)
-  if (totalRegisteredUsers === 0 && countryRegex) {
-    // If no users explicitly filled their address country, count all users
-    totalRegisteredUsers = await User.countDocuments()
-  }
+  const totalRegisteredUsers = await User.countDocuments(userCountFilter)
 
   const [
     usageKeysToday,
@@ -887,9 +814,9 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     recentRedemptions,
     recentUsers,
   ] = await Promise.all([
-    UsageView.distinct('viewerKey', usageTimeMatch(oneDayAgo)),
-    UsageView.distinct('viewerKey', usageTimeMatch(sevenDaysAgo)),
-    UsageView.distinct('viewerKey', usageTimeMatch(thirtyDaysAgo)),
+    distinctViewers(usageTimeMatch(oneDayAgo)),
+    distinctViewers(usageTimeMatch(sevenDaysAgo)),
+    distinctViewers(usageTimeMatch(thirtyDaysAgo)),
     Visited.distinct('user', visitedTimeMatch(oneDayAgo)),
     Visited.distinct('user', visitedTimeMatch(sevenDaysAgo)),
     Visited.distinct('user', visitedTimeMatch(thirtyDaysAgo)),
@@ -899,9 +826,9 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     OfferRedemption.distinct('user', redemptionTimeMatch(oneDayAgo)),
     OfferRedemption.distinct('user', redemptionTimeMatch(sevenDaysAgo)),
     OfferRedemption.distinct('user', redemptionTimeMatch(thirtyDaysAgo)),
-    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { $or: [{ lastActiveAt: { $gte: oneDayAgo } }, { lastActiveAt: { $exists: false }, updatedAt: { $gte: oneDayAgo } }], ...userCountFilter }),
-    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { $or: [{ lastActiveAt: { $gte: sevenDaysAgo } }, { lastActiveAt: { $exists: false }, updatedAt: { $gte: sevenDaysAgo } }], ...userCountFilter }),
-    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { $or: [{ lastActiveAt: { $gte: thirtyDaysAgo } }, { lastActiveAt: { $exists: false }, updatedAt: { $gte: thirtyDaysAgo } }], ...userCountFilter }),
+    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { lastActiveAt: { $gte: oneDayAgo, $lte: new Date(activityEnd) }, ...userCountFilter }),
+    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { lastActiveAt: { $gte: sevenDaysAgo, $lte: new Date(activityEnd) }, ...userCountFilter }),
+    hasEntity || categoryOid ? Promise.resolve([]) : User.distinct('_id', { lastActiveAt: { $gte: thirtyDaysAgo, $lte: new Date(activityEnd) }, ...userCountFilter }),
     Visited.countDocuments(visitedFilter),
     OfferRedemption.countDocuments(redemptionFilter),
     Review.countDocuments(reviewFilter),
@@ -1064,22 +991,6 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   redemptionUsersMonth.forEach((u: any) => u && monthUserIds.add(String(u)))
   updatedUsersMonth.forEach((u: any) => u && monthUserIds.add(String(u)))
 
-  recentActivities.forEach((act: any) => {
-    if (!act.userId) return
-    const idStr = String(act.userId)
-    const actTime = new Date(act.timestamp).getTime()
-    if (actTime >= oneDayAgo.getTime()) {
-      todayUserIds.add(idStr)
-      weekUserIds.add(idStr)
-      monthUserIds.add(idStr)
-    } else if (actTime >= sevenDaysAgo.getTime()) {
-      weekUserIds.add(idStr)
-      monthUserIds.add(idStr)
-    } else if (actTime >= thirtyDaysAgo.getTime()) {
-      monthUserIds.add(idStr)
-    }
-  })
-
   // Inherit subsets: today is part of week, week is part of month
   todayUserIds.forEach((id) => {
     weekUserIds.add(id)
@@ -1104,7 +1015,6 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     activeUsersDocs = await User.find({ _id: { $in: validObjectIds } })
       .select('name email profile role level points lastActiveAt updatedAt createdAt')
       .sort({ lastActiveAt: -1, updatedAt: -1 })
-      .limit(100)
       .lean()
   }
 
@@ -1187,14 +1097,8 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
   const dateRange = timeFilter ? getDateRangeQuery(timeFilter) : null
   const normType = String(type || '').trim().toLowerCase()
 
-  if (normType === 'place' || normType === 'business') {
-    const viewList = await UsageView.find({
-      type: normType,
-      entityId: id,
-      ...(dateRange ? { lastSeenAt: dateRange } : {}),
-    })
-      .sort({ lastSeenAt: -1 })
-      .lean()
+  if (normType === 'place' || normType === 'business' || normType === 'map') {
+    const viewList = await entityViewers(normType, id, dateRange)
 
     const authViewerIds = viewList
       .filter((v: any) => v.viewerKey && v.viewerKey.startsWith('user:'))
@@ -1238,6 +1142,7 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
     return {
       users,
       totalCount: viewList.length,
+      countMetric: 'unique_viewers',
       unavailableCount: new Set(viewList.filter((v: any) => v.viewerKey?.startsWith('user:')).map((v: any) => v.viewerKey)).size - users.length,
       guestCount,
     }
@@ -1272,62 +1177,6 @@ const getEntityUsers = async (type: string, id: string, timeFilter?: string) => 
       users: Array.from(uniqueUsers.values()),
       totalCount: users.length,
       guestCount: 0,
-    }
-  }
-
-  if (normType === 'map') {
-    const viewList = await UsageView.find({
-      type: 'map',
-      entityId: id,
-      ...(dateRange ? { lastSeenAt: dateRange } : {}),
-    })
-      .sort({ lastSeenAt: -1 })
-      .lean()
-
-    const authViewerIds = viewList
-      .filter((v: any) => v.viewerKey && v.viewerKey.startsWith('user:'))
-      .map((v: any) => v.viewerKey.replace('user:', ''))
-      .filter((viewerId: string) => mongoose.isValidObjectId(viewerId))
-
-    const guestCount = viewList.filter(
-      (v: any) => !v.viewerKey || !v.viewerKey.startsWith('user:')
-    ).length
-
-    const userMap = new globalThis.Map<string, any>()
-
-    if (authViewerIds.length > 0) {
-      const viewers = await User.find({ _id: { $in: authViewerIds } })
-        .select('name email profile role level points')
-        .lean()
-      const viewerUserMap = new globalThis.Map(viewers.map(u => [String(u._id), u]))
-
-      viewList.forEach((v: any) => {
-        if (v.viewerKey && v.viewerKey.startsWith('user:')) {
-          const uId = v.viewerKey.replace('user:', '')
-          if (!userMap.has(uId) && viewerUserMap.has(uId)) {
-            const u = viewerUserMap.get(uId)!
-            userMap.set(uId, {
-              _id: uId,
-              name: u.name || 'Anonymous User',
-              email: u.email,
-              profile: u.profile,
-              role: u.role,
-              level: u.level || 1,
-              points: u.points || 0,
-              date: v.lastSeenAt || v.updatedAt,
-              action: 'Viewed',
-            })
-          }
-        }
-      })
-    }
-
-    const users = Array.from(userMap.values())
-    return {
-      users,
-      totalCount: viewList.length,
-      unavailableCount: new Set(viewList.filter((v: any) => v.viewerKey?.startsWith('user:')).map((v: any) => v.viewerKey)).size - users.length,
-      guestCount,
     }
   }
 

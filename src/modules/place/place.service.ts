@@ -268,6 +268,14 @@ const createPlace = async (payload: IPlace): Promise<IPlace> => {
 }
 
 const commonSearchSynonyms: Record<string, string[]> = {
+  // Match common English/Spanish names and translated variants without changing stored names.
+  stone: ['rock', 'piedra', 'piedras'],
+  rock: ['stone', 'piedra', 'piedras'],
+  piedra: ['stone', 'rock', 'piedras'],
+  piedras: ['stone', 'rock', 'piedra'],
+  written: ['escrita', 'escrito'],
+  escrita: ['written', 'escrito'],
+  escrito: ['written', 'escrita'],
   faro: ['lighthouse', 'faros', 'lighthouses'],
   faros: ['lighthouse', 'lighthouses', 'faro'],
   lighthouse: ['faro', 'faros', 'lighthouses'],
@@ -382,7 +390,8 @@ function buildPlaceSearchFilter(searchTerm: string, isBusiness = false) {
   // Multi-word search (e.g. "San Sebastian", "Cabo Rojo", "Cascada Gozalandia"):
   // Either exact phrase in any field, OR each significant word must be found across the place's fields
   const wordAndConditions = words.map(w => {
-    const wRegex = new RegExp(buildAccentInsensitivePattern(w), 'i')
+    const terms = [w, ...(commonSearchSynonyms[w] || [])]
+    const wRegex = new RegExp(terms.map(buildAccentInsensitivePattern).join('|'), 'i')
     return { $or: getFields(wRegex) }
   })
 
@@ -763,7 +772,9 @@ const getAllPlaces = async (
       // Multi-word search (e.g. "San Sebastian", "Cascada Gozalandia")
       if (wordsClean.length > 1) {
         if (score === 0) {
-          const allWordsPresent = wordsClean.every(w => fullText.includes(w))
+          const allWordsPresent = wordsClean.every(w =>
+            [w, ...(commonSearchSynonyms[w] || [])].some(term => fullText.includes(term)),
+          )
           if (allWordsPresent) {
             score += 350
           }

@@ -8,9 +8,10 @@ export default {
   node_env: process.env.NODE_ENV,
   clientUrl: process.env.clientUrl,
   port: process.env.PORT,
-  cors_origins: process.env.CORS_ORIGINS
+  cors_origins: Array.from(new Set(['https://roadtripeado.com', ...(process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
-    : ['https://roadtripeado.shop', 'http://10.10.26.208:3000', 'http://localhost:3000', 'http://10.10.26.173:3000', 'http://10.10.26.172:3000', 'http://195.35.6.13:3008', 'http://localhost:3001', 'https://mohosin5004.binarybards.online'],
+    : ['https://roadtripeado.shop', 'https://roadtripeado.com', 'http://localhost:3000'])]
+    .map(origin => origin.trim().replace(/\/+$/, '')).filter(Boolean))),
   bcrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
   server_map_api_key: process.env.SERVER_MAP_API_KEY,
   google: {
