@@ -322,18 +322,19 @@ const processEmailsInBackground = async (promoLinks: any[]) => {
 
           let subject = ''
           let bodyText = ''
+          let buttonText = 'Acceder al mapa'
 
           if (promo.promoType === 'influencer') {
             subject = `Invitación de acceso VIP exclusivo - ${mapName}`
-            bodyText = `<p>¡Hola!</p>
-               <p>¡Tenemos una invitación especial para ti! Como creador de contenido, te ofrecemos acceso VIP 100% gratuito al mapa prémium <strong>${safeMapName}</strong> en Roadtripeado.</p>
-               <p>Para canjear tu invitación, haz clic en el enlace de abajo e inicia sesión o crea una cuenta con el correo que recibió esta invitación:</p>`
+            bodyText = `<p>¡Estamos encantados de extenderte una invitación especial! Como influencer clave, tienes acceso VIP 100% gratuito a la versión premium de Roadtripeado.</p>
+               <p>Canjea tu pase de invitado ahora haciendo clic en el enlace a continuación e iniciando sesión o registrándote:</p>`
           } else if (promo.promoType === 'upgrade') {
-            subject = `Mejora tu acceso de Google My Maps a ${mapName}`
-            bodyText = `<p>¡Hola!</p>
-               <p>Como usuario de nuestros mapas de Google My Maps, queremos invitarte a nuestra plataforma prémium de mapas interactivos para viajes por carretera.</p>
-               <p>Puedes desbloquear el mapa prémium <strong>${safeMapName}</strong> por un precio especial de solo <strong>$${promo.price}</strong>.</p>
-               <p>Haz clic en el enlace de abajo, inicia sesión o crea una cuenta con el correo que recibió esta invitación y completa la mejora:</p>`
+            subject = `¡Roadtripeado evolucionó! 🚀 Migra a la nueva plataforma - ${mapName}`
+            buttonText = '¡Migra a la nueva plataforma aquí!'
+            const discountText = promo.price === 5 ? 'un 85% de descuento' : 'un precio especial'
+            bodyText = `<p>¡Roadtripeado evolucionó! 🚀 Creamos una plataforma completamente nueva que reemplaza nuestro mapa anterior, con un diseño moderno, nuevas herramientas y sin las limitaciones de Google Maps.</p>
+               <p>Como ya compraste nuestro mapa, tienes ${discountText} para migrar a la nueva plataforma por solo $${promo.price} (pago único). No estás comprando otro mapa, sino actualizando tu acceso a una experiencia completamente renovada.</p>
+               <p>Para migrar, solo tienes que registrarte y completar el proceso.</p>`
           } else {
             subject = `Oferta especial de mapas: ${mapName}`
             bodyText = `<p>¡Hola!</p>
@@ -359,7 +360,7 @@ const processEmailsInBackground = async (promoLinks: any[]) => {
                         <td style="padding: 0 40px 40px 40px; text-align:center;">
                           ${bodyText}
                           <div style="margin: 32px 0;">
-                            <a href="${claimUrl}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">Acceder al mapa</a>
+                            <a href="${claimUrl}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">${buttonText}</a>
                           </div>
                           <p style="color:#777777; font-size:13px; margin: 24px 0 0 0;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
                           <p style="word-break: break-all; font-size:12px; color:#FFC107;"><a href="${claimUrl}" style="color:#FFC107; text-decoration:underline;">${claimUrl}</a></p>
