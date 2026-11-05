@@ -6,7 +6,9 @@ export default {
   ip_address: process.env.IP_ADDRESS,
   database_url: process.env.DATABASE_URL,
   node_env: process.env.NODE_ENV,
-  clientUrl: process.env.clientUrl,
+  clientUrl: (process.env.clientUrl?.trim() || 'https://roadtripeado.com')
+    .replace(/^https?:\/\/(www\.)?roadtripeado\.shop(?=\/|$)/i, 'https://roadtripeado.com')
+    .replace(/\/+$/, ''),
   port: process.env.PORT,
   cors_origins: Array.from(new Set(['https://roadtripeado.com', ...(process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')

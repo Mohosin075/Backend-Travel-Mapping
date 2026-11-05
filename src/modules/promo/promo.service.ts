@@ -311,33 +311,38 @@ const processEmailsInBackground = async (promoLinks: any[]) => {
     await Promise.all(
       batch.map(async promo => {
         try {
-          const mapName = promo.mapId?.name || 'exclusive map'
+          const localizedName = localizeField(promo.mapId?.name, 'es')
+          const mapName = typeof localizedName === 'string' && localizedName.trim()
+            ? localizedName.trim()
+            : 'mapa exclusivo'
+          const safeMapName = mapName.replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+          })[char]!)
           const claimUrl = `${config.clientUrl}/claim-promo?code=${promo.code}`
-          const isFree = promo.price === 0
 
           let subject = ''
           let bodyText = ''
 
           if (promo.promoType === 'influencer') {
-            subject = `Exclusive VIP Access Invite - ${mapName}`
-            bodyText = `<p>Hi there,</p>
-               <p>We are thrilled to extend a special invitation to you! As a key influencer, you have been granted 100% free VIP access to the premium <strong>${mapName}</strong> on Roadtripeado.</p>
-               <p>Redeem your guest pass now by clicking the link below and logging in or signing up:</p>`
+            subject = `Invitación de acceso VIP exclusivo - ${mapName}`
+            bodyText = `<p>¡Hola!</p>
+               <p>¡Tenemos una invitación especial para ti! Como creador de contenido, te ofrecemos acceso VIP 100% gratuito al mapa prémium <strong>${safeMapName}</strong> en Roadtripeado.</p>
+               <p>Para canjear tu invitación, haz clic en el enlace de abajo e inicia sesión o crea una cuenta con el correo que recibió esta invitación:</p>`
           } else if (promo.promoType === 'upgrade') {
-            subject = `Upgrade Your Google My Maps Access to ${mapName}`
-            bodyText = `<p>Hi there,</p>
-               <p>As one of our valued existing Google My Maps users, we would love to invite you to upgrade to our premium interactive road trip maps platform.</p>
-               <p>You can unlock the premium <strong>${mapName}</strong> for a special upgrade fee of just <strong>$${promo.price}</strong>.</p>
-               <p>To claim your upgrade, click the link below, log in or sign up, and complete the upgrade:</p>`
+            subject = `Mejora tu acceso de Google My Maps a ${mapName}`
+            bodyText = `<p>¡Hola!</p>
+               <p>Como usuario de nuestros mapas de Google My Maps, queremos invitarte a nuestra plataforma prémium de mapas interactivos para viajes por carretera.</p>
+               <p>Puedes desbloquear el mapa prémium <strong>${safeMapName}</strong> por un precio especial de solo <strong>$${promo.price}</strong>.</p>
+               <p>Haz clic en el enlace de abajo, inicia sesión o crea una cuenta con el correo que recibió esta invitación y completa la mejora:</p>`
           } else {
-            subject = `Special Map Offer: ${mapName}`
-            bodyText = `<p>Hi there,</p>
-               <p>We have created a special map offer for you on Roadtripeado! You can unlock the <strong>${mapName}</strong> for a customized rate of just <strong>$${promo.price}</strong>.</p>
-               <p>Redeem this offer now by clicking the link below:</p>`
+            subject = `Oferta especial de mapas: ${mapName}`
+            bodyText = `<p>¡Hola!</p>
+               <p>¡Hemos creado una oferta especial para ti en Roadtripeado! Puedes desbloquear el mapa <strong>${safeMapName}</strong> por un precio especial de solo <strong>$${promo.price}</strong>.</p>
+               <p>Para canjear esta oferta, haz clic en el enlace de abajo e inicia sesión o crea una cuenta con el correo que recibió esta invitación:</p>`
           }
 
           const emailHtml = `
-            <body style="margin:0; padding:0; background-color:#F9FAFB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+            <body lang="es" style="margin:0; padding:0; background-color:#F9FAFB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB; padding: 40px 0;">
                 <tr>
                   <td align="center">
@@ -347,21 +352,21 @@ const processEmailsInBackground = async (promoLinks: any[]) => {
                           <div style="margin-bottom: 24px;">
                              <img src="cid:roadtripeado-logo" alt="Roadtripeado Logo" style="width:140px; height:auto; display:block; margin:0 auto;" />
                           </div>
-                          <h1 style="color:#111827; font-size:24px; font-weight:700; margin:0; line-height: 1.2;">Your Exclusive Access Link</h1>
+                          <h1 style="color:#111827; font-size:24px; font-weight:700; margin:0; line-height: 1.2;">Tu enlace de acceso exclusivo</h1>
                         </td>
                       </tr>
                       <tr>
                         <td style="padding: 0 40px 40px 40px; text-align:center;">
                           ${bodyText}
                           <div style="margin: 32px 0;">
-                            <a href="${claimUrl}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">Access Map Now</a>
+                            <a href="${claimUrl}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">Acceder al mapa</a>
                           </div>
-                          <p style="color:#777777; font-size:13px; margin: 24px 0 0 0;">If the button doesn't work, you can copy and paste this URL into your browser:</p>
+                          <p style="color:#777777; font-size:13px; margin: 24px 0 0 0;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
                           <p style="word-break: break-all; font-size:12px; color:#FFC107;"><a href="${claimUrl}" style="color:#FFC107; text-decoration:underline;">${claimUrl}</a></p>
                         </td>
                       </tr>
                       <tr>
-                        <td style="background:#F9FAFB; padding:24px; text-align:center; font-size:12px; color:#6B7280;">&copy; ${new Date().getFullYear()} Roadtripeado. All rights reserved.</td>
+                        <td style="background:#F9FAFB; padding:24px; text-align:center; font-size:12px; color:#6B7280;">&copy; ${new Date().getFullYear()} Roadtripeado. Todos los derechos reservados.</td>
                       </tr>
                     </table>
                   </td>
@@ -370,11 +375,15 @@ const processEmailsInBackground = async (promoLinks: any[]) => {
             </body>
           `
 
-          await emailHelper.sendEmail({
+          const emailResult = await emailHelper.sendEmail({
             to: promo.recipientEmail,
             subject,
             html: emailHtml,
           })
+
+          if (!emailResult.success) {
+            throw new Error('Failed to deliver promo invitation email')
+          }
 
           await PromoLink.findByIdAndUpdate(promo._id, {
             isEmailSent: true,
