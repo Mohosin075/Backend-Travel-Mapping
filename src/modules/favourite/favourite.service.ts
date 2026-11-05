@@ -8,6 +8,7 @@ import { Offer } from '../offer/offer.model'
 import { Business } from '../business/business.model'
 import { User } from '../user/user.model'
 import mongoose from 'mongoose'
+import { getCountryScope } from '../../helpers/countryScope'
 
 const toggleFavourite = async (
   userId: string,
@@ -171,7 +172,7 @@ const toggleFavourite = async (
 }
 
 const getMyFavourites = async (userId: string, query: Record<string, unknown>) => {
-  const { page = 1, limit = 1000, sort = '-createdAt', ...filterData } = query
+  const { page = 1, limit = 1000, sort = '-createdAt', country, ...filterData } = query
   const skip = (Number(page) - 1) * Number(limit)
 
   const sortStr = sort as string
@@ -179,8 +180,29 @@ const getMyFavourites = async (userId: string, query: Record<string, unknown>) =
   const sortField = sortStr.replace(/^-/, '')
 
   const matchStage: Record<string, unknown> = {
-    user: new mongoose.Types.ObjectId(userId),
     ...filterData,
+    // Query parameters must never override the authenticated owner.
+    user: new mongoose.Types.ObjectId(userId),
+  }
+
+  if (typeof country === 'string' && country.trim()) {
+    const { countries, mapIds } = await getCountryScope(country)
+    const [places, businesses] = await Promise.all([
+      Place.find({ $or: [{ country: { $in: countries } }, { map: { $in: mapIds } }] }).select('_id').lean(),
+      Business.find({ 'location.country': { $in: countries } }).select('_id').lean(),
+    ])
+    const placeIds = places.map(place => place._id)
+    const businessIds = businesses.map(business => business._id)
+    const offers = await Offer.find({ $or: [
+      { place: { $in: placeIds } }, { business: { $in: businessIds } },
+    ] }).select('_id').lean()
+    matchStage.$and = [
+      ...(Array.isArray(matchStage.$and) ? matchStage.$and : []),
+      { $or: [
+        { map: { $in: mapIds } }, { place: { $in: placeIds } },
+        { business: { $in: businessIds } }, { offer: { $in: offers.map(offer => offer._id) } },
+      ] },
+    ]
   }
 
   // Paginate first, then lookup only the page of docs (list fields only)
