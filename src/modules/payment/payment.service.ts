@@ -21,6 +21,10 @@ import stripe from '../../config/stripe'
 import { generatePDFInvoice } from '../../helpers/invoiceHelper'
 import { localizeField } from '../../helpers/localize'
 
+// Catalog map prices are USD. Clients must not reinterpret the stored price
+// as another currency when creating either web or mobile payments.
+const MAP_PAYMENT_CURRENCY = 'usd'
+
 const createCheckoutSession = async (
   user: any,
   payload: any,
@@ -42,7 +46,7 @@ const createCheckoutSession = async (
 
     // Always charge server-side map price (ignore client amount)
     const amount = map.price
-    const currency = (payload.currency || 'EUR').toLowerCase()
+    const currency = MAP_PAYMENT_CURRENCY
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -247,7 +251,7 @@ const createPaymentIntent = async (
     }
 
     const amount = map.price
-    const currency = (payload.currency || 'eur').toLowerCase()
+    const currency = MAP_PAYMENT_CURRENCY
     const resolvedUserId = (user.authId || user.id || user._id)?.toString()
 
     const paymentIntent = await stripe.paymentIntents.create({
