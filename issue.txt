@@ -1,23 +1,15 @@
+GENERAL VERSION:
 Dashboard:
-
-1. On the reports and statistics page, in the "most viewed places" section where it says the amount, it does not allow me to see all the users they have seen, I need these data to be as accurate as possible to make strategic decisions.
-
-2. On the map of the places page, when you try to drag, the pop-up comes out and does not allow you to drag the pin correctly. Please check that out.
-
-3. On the reports and statistics page, in general, the data of people who are active or have seen the places is not updated in real time. Because even if I connect, I do not go out on the statistics. Also the people who put their profile anonymous, who are only anonymous for the users, but for the administrators no.
-
-4. The search engine on the "places" page is not working properly, I type "the written stone" and the place I am looking for does not come out, even though it is saved correctly.
-
-
+1. On the map of the places page, when you drag the pin, the pop-up opens to edit the info and save it from there. I would like it to be like before, drag and come out an independent pop-up of confirmation.
+2. In the user profile in the "recent activities" section, let the places they have seen, as well as on the statistics page. Do not confuse places visited with places seen, I mean the places I explore and enter the web.
+3. improve map loads and everything mentioned to make it more cost-effective.
 
 Users:
+1. Improve the form of payment and registration without friction.
+2. The offers are not appearing on the offers page or on the dashboard either.
 
-1. On the "visited places" and "My Routes" page, delete the "all countries" option from the filter.
-
-2. On the "favorite places" page, allow you to change countries, such as on the "places, maps, offers" page, and see the places in the corresponding country.
-
-3. That the reviews that the user writes, that it looks as it sees the reviews of the other users. (with the profile picture, username, same organization but with the "edit review" button on the top right side where it does not bother but that it is understood that it is there.
+Users without buying a map:
+1. Block the map in general so that users who have not purchased the map do not use map loads and Google Maps does not count those loads.
 
 MOBILE VERSION:
-
-2. By pressing the profile button where all the options of "visited places, my routes, contributions, etc." come out, the Close session button goes down and up next to the other options when the user swipe up or swip down.
+2. By pressing the profile button where all the options of "visited places, my routes, contributions, etc." come out, the Close session button will also go down and up next to the other options when the user makes a swipe up or swip down.
