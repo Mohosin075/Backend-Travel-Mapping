@@ -36,6 +36,7 @@ function service() {
  const empty={find:()=>chain([]),aggregate:async()=>[],distinct:async()=>[],countDocuments:async()=>0};
  const userModel={collection:{name:'users'},find:q=>chain(users.filter(u=>matches(u,q))),countDocuments:async q=>users.filter(u=>matches(u,q)).length,distinct:async()=>[]};
  const imports={mongoose,'../../helpers/localize':{localizeField:v=>typeof v==='object'?v?.es||v?.en:v},'../../errors/ApiError':class extends Error {},'http-status-codes':{StatusCodes:{}},'../user/user.model':{User:userModel},'../payment/payment.model':{Payment:{find:()=>chain([{amount:10,createdAt:current},{amount:90,createdAt:old}])}},
+ './recent-place-views':{recentPlaceViews:async()=>[]},
  './usage-reporting':{rankedViewers:async()=>[],distinctViewers:async()=>[...live.map(u=>`user:${u._id}`),`user:${deleted._id}`,`user:${id(888)}`,'guest:one','guest:two']}};
  for(const [module,name] of [['map','Map'],['place','Place'],['offer','Offer'],['business','Business'],['visited','Visited'],['review','Review']]) imports[`../${module}/${module}.model`]={[name]:empty};
  imports['../offer/offerRedemption.model']={OfferRedemption:{...empty,find:()=>chain([{_id:id(21),user:live[0],redemptionTime:current},{_id:id(22),user:live[0],redemptionTime:old},{_id:id(23),user:null}])}};

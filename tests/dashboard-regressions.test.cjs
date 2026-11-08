@@ -38,6 +38,7 @@ const entityId = '123456789012345678901234'
 function stats(rows, users, redemptions = []) {
   const queries = []
   const { StatsService } = load('src/modules/stats/stats.service.ts', {
+    './recent-place-views': { recentPlaceViews: async () => [] },
     mongoose: { default: { isValidObjectId: id => /^[a-f\d]{24}$/i.test(id) } },
     '../../errors/ApiError': { default: ApiError },
     'http-status-codes': { StatusCodes: { BAD_REQUEST: 400 } },
@@ -144,6 +145,10 @@ test('profile returns only earned rewards and all activities for see more', asyn
   const reviews = Array.from({ length: 18 }, (_, i) => ({ createdAt: new Date(2026, 1, i + 1) }))
   const offers = Array.from({ length: 17 }, (_, i) => ({ redemptionTime: new Date(2026, 2, i + 1) }))
   const { UserServices } = load('src/modules/user/user.service.ts', {
+    '../stats/recent-place-views': { recentPlaceViews: async match => {
+      assert.equal(match.viewerKey, `user:${entityId}`)
+      return [{ type: 'view', title: 'Viewed Place', subtitle: 'Explored beach', timestamp: new Date(2026, 10, 8) }]
+    } },
     mongoose: { Types: { ObjectId: { isValid: () => true } } },
     '../../enum/user': { USER_STATUS: { DELETED: 'deleted' } },
     './user.model': { User: { findOne: () => chain({ level: 1, purchasedMaps: [] }) } },
@@ -161,7 +166,10 @@ test('profile returns only earned rewards and all activities for see more', asyn
   const profile = await UserServices.getUserById(entityId)
   assert.equal(awardQuery.isUnlocked, true)
   assert.equal(awardSort.target, 1)
-  assert.equal(profile.activityTimeline.length, 60)
-  assert.equal(profile.activityTimeline[0].type, 'offer_claimed')
-  assert.equal(profile.activityTimeline[59].type, 'place_visit')
+  assert.equal(profile.activityTimeline.length, 61)
+  assert.equal(profile.activityTimeline[0].type, 'place_view')
+  assert.equal(profile.activityTimeline[0].name, 'Explored beach')
+  assert.equal(profile.activitySummary.totalPlacesVisited, 25)
+  assert.equal(profile.activityTimeline[1].type, 'offer_claimed')
+  assert.equal(profile.activityTimeline[60].type, 'place_visit')
 })

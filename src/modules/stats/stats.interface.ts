@@ -66,7 +66,7 @@ export interface ISearchMatchItem {
 
 export interface IUserActivityItem {
   id: string;
-  type: 'visit' | 'review' | 'redemption' | 'registration';
+  type: 'view' | 'visit' | 'review' | 'redemption' | 'registration';
   userId?: string;
   userName: string;
   userEmail?: string;

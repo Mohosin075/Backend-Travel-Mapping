@@ -1,7 +1,9 @@
 GENERAL VERSION:
 Dashboard:
 1. On the map of the places page, when you drag the pin, the pop-up opens to edit the info and save it from there. I would like it to be like before, drag and come out an independent pop-up of confirmation.
+Solved
 2. In the user profile in the "recent activities" section, let the places they have seen, as well as on the statistics page. Do not confuse places visited with places seen, I mean the places I explore and enter the web.
+Solved
 3. improve map loads and everything mentioned to make it more cost-effective.
 
 Users:
@@ -13,3 +15,4 @@ Users without buying a map:
 
 MOBILE VERSION:
 2. By pressing the profile button where all the options of "visited places, my routes, contributions, etc." come out, the Close session button will also go down and up next to the other options when the user makes a swipe up or swip down.
+Solved

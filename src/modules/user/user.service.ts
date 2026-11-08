@@ -22,6 +22,7 @@ import { OfferRedemption } from '../offer/offerRedemption.model'
 import { Award } from '../award/award.model'
 import '../award/awardConfig.model'
 import { LevelConfigServices } from '../award/levelConfig.service'
+import { recentPlaceViews } from '../stats/recent-place-views'
 import { Visited } from '../visited/visited.model'
 import { Map } from '../map/map.model'
 import { Place } from '../place/place.model'
@@ -329,8 +330,11 @@ const getUserById = async (userId: string): Promise<any> => {
     .sort({ visitedAt: -1 })
     .lean()
 
+  const viewedPlaces = await recentPlaceViews({ viewerKey: `user:${userId}` }, 50)
+
   // Compute last activity and activity summary
   const activityTimestamps: number[] = [
+    ...viewedPlaces.map(v => new Date(v.timestamp).getTime()),
     user.updatedAt ? new Date(user.updatedAt).getTime() : 0,
     user.createdAt ? new Date(user.createdAt).getTime() : 0,
     ...visitedPlaces.map((v: any) => (v.visitedAt ? new Date(v.visitedAt).getTime() : 0)),
@@ -343,7 +347,9 @@ const getUserById = async (userId: string): Promise<any> => {
     : user.updatedAt || user.createdAt
 
   // Build unified chronological activity timeline
-  const activityTimeline: any[] = []
+  const activityTimeline: any[] = viewedPlaces.map(v => ({
+    ...v, type: 'place_view', name: v.subtitle,
+  }))
 
   visitedPlaces.forEach((v: any) => {
     activityTimeline.push({

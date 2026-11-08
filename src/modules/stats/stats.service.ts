@@ -1,3 +1,4 @@
+import { recentPlaceViews } from './recent-place-views'
 import ApiError from '../../errors/ApiError'
 import { StatusCodes } from 'http-status-codes'
 import { Map } from '../map/map.model'
@@ -792,7 +793,17 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   redemptionUsersMonth.forEach((u: any) => activeMonthSet.add(`user:${String(u)}`))
   updatedUsersMonth.forEach((u: any) => activeMonthSet.add(`user:${String(u)}`))
 
-  const recentActivities: IUserActivityItem[] = []
+  const viewedPlaceScope = hasEntity && query.entityType === 'map'
+    ? { type: 'place', entityId: { $in: allowedPlaceIds } }
+    : hasEntity && query.entityType === 'offer'
+      ? { $or: [
+          { type: 'place', entityId: { $in: allowedPlaceIds } },
+          { type: 'business', entityId: usagePlace?.id || '' },
+        ] }
+      : usageEntityMatch
+  const recentActivities: IUserActivityItem[] = await recentPlaceViews({
+    ...viewedPlaceScope, ...(dateRange ? { lastSeenAt: dateRange } : {}),
+  })
 
   recentVisits.forEach((v: any) => {
     recentActivities.push({

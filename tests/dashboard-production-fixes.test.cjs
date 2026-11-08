@@ -244,6 +244,11 @@ test('reports include more than 100 private active accounts and do not infer vis
   }
   imports['../offer/offerRedemption.model'] = { OfferRedemption: empty }
   imports['../payment/payment.model'] = { Payment: empty }
+  const viewScopes = []
+  imports['./recent-place-views'] = { recentPlaceViews: async scope => {
+    viewScopes.push(scope)
+    return [{ id: 'view:beach', type: 'view', title: 'Viewed Place', userName: 'Private Viewer', targetType: 'place', targetId: id, timestamp: new Date() }]
+  } }
   imports['./usage-reporting'] = {
     rankedViewers: async () => [],
     distinctViewers: async () => active ? users.map(u => `user:${u._id}`) : [],
@@ -256,6 +261,8 @@ test('reports include more than 100 private active accounts and do not infer vis
   } }
   const { StatsService } = load('src/modules/stats/stats.service.ts', imports)
   const report = await StatsService.getReportsData()
+  assert.equal(report.userActivity.recentActivities[0].type, 'view')
+  assert.equal(report.userActivity.totalPlacesVisited, 0)
   assert.equal(report.userActivity.activeUsersToday, 150)
   assert.equal(report.userActivity.activeTodayList.length, 150)
   assert.equal(report.userActivity.activeTodayList[149].name, 'Private 149')
@@ -265,6 +272,13 @@ test('reports include more than 100 private active accounts and do not infer vis
   const idle = await StatsService.getReportsData()
   assert.equal(idle.userActivity.activeUsersToday, 0)
   assert.equal(idle.userActivity.activeUsersList.length, 0)
+  await StatsService.getReportsData({ entityType: 'map', entityId: id, timeFilter: 'last_month' })
+  assert.equal(viewScopes[2].type, 'place', 'selected map includes its place views, not only map opens')
+  assert.deepEqual(plain(viewScopes[2].entityId), { $in: [] }, 'empty map never leaks unrelated views')
+  assert.ok(viewScopes[2].lastSeenAt.$gte instanceof Date)
+  assert.ok(viewScopes[2].lastSeenAt.$lte instanceof Date)
+  await StatsService.getReportsData({ country: 'Puerto Rico', category: id })
+  assert.deepEqual(plain(viewScopes[3]), { _id: { $in: [] } }, 'empty country/category scope never becomes an unfiltered feed')
 })
 
 test('a delayed tracking failure cannot be reassigned after an account switch or logout', async () => {
@@ -290,6 +304,104 @@ test('a delayed tracking failure cannot be reassigned after an account switch or
     assert.equal(sent.length, nextSession === 'refreshed' ? 1 : 0)
     if (nextSession === 'refreshed') assert.equal(sent[0][1].token, 'fresh-account-a')
   }
+})
+
+test('relocation only patches coordinates after confirmation; cancel and failure restore the pin', async () => {
+  for (const outcome of ['confirm', 'cancel', 'dismiss', 'failure']) {
+    let positions = {}, resolveAlert, selected = 'old'
+    const mutations = [], errors = [], gate = { current: false }
+    const move = pageHandler('handleMarkerDragEnd', {
+      useCallback: fn => fn, pinMoveInFlight: gate,
+      displayPlaces: [{ _id: id }], draggedPositions: {}, language: 'en',
+      placeDetailsRequest: { current: 0 },
+      setDraggedPositions: fn => { positions = fn(positions) },
+      setSelectedPlace: value => { selected = value }, setActivePoi() {},
+      appAlert: { fire: () => new Promise(resolve => { resolveAlert = resolve }) },
+      updatePlace: payload => { mutations.push(plain(payload)); return { unwrap: async () => {
+        if (outcome === 'failure') throw { data: { message: 'Not authorized' } }
+      } } },
+      toast: { success() {}, error: value => errors.push(value) },
+    })
+    const pending = move(id, { lat: 18, lng: -66 })
+    assert.equal(mutations.length, 0)
+    assert.equal(selected, null)
+    await move(id, { lat: 19, lng: -65 })
+    resolveAlert({ isConfirmed: ['confirm', 'failure'].includes(outcome) })
+    await pending
+    assert.equal(gate.current, false)
+    assert.equal(mutations.length, ['confirm', 'failure'].includes(outcome) ? 1 : 0)
+    if (mutations.length) assert.deepEqual(mutations[0], { id, data: { location: { type: 'Point', coordinates: [-66, 18] } } })
+    assert.deepEqual(plain(positions), outcome === 'confirm' ? { [id]: { lat: 18, lng: -66 } } : {})
+    if (outcome === 'failure') assert.deepEqual(errors, ['Not authorized'])
+  }
+})
+
+test('mobile logout belongs to the same scroll container as the profile options', () => {
+  const filename = path.join(front, 'components/shared/navigation/header.tsx')
+  const file = ts.createSourceFile(filename, fs.readFileSync(filename, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let scroll, footer
+  function visit(node) {
+    if (ts.isJsxElement(node)) {
+      const attrs = node.openingElement.attributes.properties.map(p => p.name?.getText(file))
+      if (attrs.includes('data-profile-menu-scroll')) scroll = node
+      if (attrs.includes('data-profile-menu-footer')) footer = node
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  assert.ok(scroll && footer)
+  assert.ok(footer.pos > scroll.pos && footer.end < scroll.end)
+})
+
+test('a fast refetch clears the saved pin override even while the mutation is settling', () => {
+  const filename = path.join(front, 'components/dashboard/places/add-place-page.tsx')
+  const file = ts.createSourceFile(filename, fs.readFileSync(filename, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let callback
+  function visit(node) {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === 'useEffect' &&
+      node.arguments[0]?.getText(file).includes('coordsChanged([pos.lng, pos.lat], coords)')) callback = node.arguments[0]
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  assert.ok(callback)
+  let positions = { [id]: { lat: 18, lng: -66 }, other: { lat: 1, lng: 2 } }
+  const exports = {}
+  vm.runInNewContext(ts.transpileModule(`exports.run = ${callback.getText(file)}`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText, {
+    exports, pinMoveInFlight: { current: true },
+    fetchedPlaces: [{ _id: id, location: { coordinates: [-66, 18] } }],
+    coordsChanged: (a, b) => a.some((value, index) => value !== b[index]),
+    setDraggedPositions: fn => { positions = fn(positions) },
+  })
+  exports.run()
+  assert.deepEqual(plain(positions), { other: { lat: 1, lng: 2 } })
+})
+
+test('viewed activity keeps account/date scope and excludes maps, guests and removed records', async () => {
+  let pipeline
+  const { recentPlaceViews } = load('src/modules/stats/recent-place-views.ts', {
+    './usageView.model': { UsageView: { aggregate: async stages => { pipeline = plain(stages); return [{
+      type: 'place', entityId: id, lastSeenAt: new Date(),
+      account: { _id: userId, name: 'Explorer' }, target: { name: { en: 'Beach' } },
+    }] } } },
+    './usage-reporting': { viewerPipeline: match => [{ $match: match }] },
+    '../user/user.model': { User: { collection: { name: 'users' } } },
+    '../place/place.model': { Place: { collection: { name: 'places' } } },
+    '../business/business.model': { Business: { collection: { name: 'businesses' } } },
+    '../../helpers/localize': { localizeField: value => value.en },
+  })
+  const scope = { viewerKey: `user:${userId}`, lastSeenAt: { $gte: 'start' } }
+  const result = await recentPlaceViews(scope, 50)
+  assert.deepEqual(pipeline[0].$match.$and[0], scope)
+  assert.deepEqual(pipeline[0].$match.$and[1].type.$in, ['place', 'business'])
+  assert.equal(pipeline[0].$match.$and[1].viewerKey.$regex, '^user:[a-fA-F0-9]{24}$')
+  assert.ok(pipeline.some(p => p.$match?.['account.status']?.$ne === 'deleted'))
+  assert.ok(pipeline.some(p => p.$match?.['target._id']?.$exists))
+  assert.ok(pipeline.some(p => p.$limit === 50))
+  assert.equal(result[0].type, 'view')
+  assert.equal(result[0].subtitle, 'Beach')
+  assert.equal(result[0].userId, userId)
 })
 
 // Execute the actual page callbacks with controlled asynchronous detail requests.

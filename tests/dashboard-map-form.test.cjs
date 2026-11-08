@@ -142,11 +142,15 @@ test('unchecking always-open survives a parent render and saves the unchecked va
   assert.equal(saved[0].atmosphere, 'Tranquilo')
 })
 
-test('view tracking sends app token even without an access-token cookie, including separate accounts', () => {
+test('view tracking sends app token on HTTP failure even without a cookie, including separate accounts', async () => {
   const sent = [], sessions = new Map(), local = new Map()
   let state = { auth: { accessToken: 'token-one', user: { id: 'user-one' } } }
   const { trackUsage } = load('../frontend_giovafilm_roadtripeado/lib/record-visit.ts', {
-    '@/redux/store': { default: { getState: () => state } },
+    '@/redux/store': { default: {
+      getState: () => state,
+      dispatch: () => ({ unwrap: async () => { throw { status: 'FETCH_ERROR' } }, reset() {} }),
+    } },
+    '@/redux/features/stats/statsApi': { statsApi: { endpoints: { recordUsage: { initiate: body => body } } } },
     '@/lib/socket': { emitWhenReady: (event, payload) => sent.push({ event, payload }) },
   }, { document: { cookie: '' }, process: { env: {} }, window: {
     localStorage: { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value) },
@@ -154,13 +158,16 @@ test('view tracking sends app token even without an access-token cookie, includi
   } })
   const id = '123456789012345678901234'
   trackUsage('place', id)
+  await new Promise(resolve => setImmediate(resolve))
   state = { auth: { accessToken: 'token-two', user: { id: 'user-two' } } }
   trackUsage('place', id)
+  await new Promise(resolve => setImmediate(resolve))
   assert.equal(sent.length, 2)
   assert.equal(sent[0].payload.token, 'token-one')
   assert.equal(sent[1].payload.token, 'token-two')
   state = { auth: { accessToken: null, user: null } }
   trackUsage('place', id)
+  await new Promise(resolve => setImmediate(resolve))
   assert.equal(sent[2].payload.token, '')
 })
 
@@ -173,6 +180,7 @@ test('guest view never inherits a previous signed-in socket account', async () =
       find: query => { queries.push(query); const chain = { sort: () => chain, lean: async () => [] }; return chain },
       create: async value => created.push(value),
     } },
+    './usageViewDay.model': { UsageViewDay: { updateOne: async () => {} } },
     '../place/place.service': { PlaceService: { incrementOpenCount: async () => {} } },
   })
   await recordUniqueUsage({ handshake: { auth: { token: 'old-account-token' }, headers: {} } }, {
