@@ -135,8 +135,15 @@ const createOffer = async (payload: any, authHeader?: string): Promise<IOffer> =
   return result
 }
 
-const getAllOffers = async (query: Record<string, unknown>, authHeader?: string) => {
+const getAllOffers = async (query: Record<string, unknown>, authHeader?: string, managed = false) => {
+  const user = await getUserFromToken(authHeader)
+  if (managed && (!user || ![USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MAP_EDITOR].includes(user.role as any))) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You do not have permission to manage offers.')
+  }
+  const accessibleMapIds = await getAccessibleMapIds(user)
   const queryObj = { ...query }
+  // Imports can give several offers the same timestamp. Keep pages stable.
+  if (!queryObj.sort) queryObj.sort = '-createdAt -_id'
 
   // Extract custom query filters before QueryBuilder.filter() runs
   const country =
@@ -149,22 +156,35 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
   delete queryObj.map
   delete queryObj.searchTerm
 
-  // Find all approved businesses with active subscriptions
-  const activeBusinesses = await Business.find({
-    status: 'Approved',
-    hasActiveSubscription: true,
-  }).select('_id').lean()
-  const activeBusinessIds = activeBusinesses.map(b => b._id)
-
-  // Filter offers: must either belong to a place or to an active/approved business
-  const filterConditions: any[] = [
-    {
+  const filterConditions: any[] = []
+  if (!managed) {
+    // Publication rules apply to discovery, not to the staff management list.
+    const activeBusinesses = await Business.find({
+      status: 'Approved', hasActiveSubscription: true,
+    }).select('_id').lean()
+    filterConditions.push({
       $or: [
         { place: { $exists: true, $ne: null } },
-        { business: { $in: activeBusinessIds } },
+        { business: { $in: activeBusinesses.map(b => b._id) } },
       ],
-    },
-  ]
+    })
+  } else if (user?.role === USER_ROLES.MAP_EDITOR) {
+    // Scope before pagination so another editor's offers cannot consume a page.
+    const assignedMaps = await MapModel.find({ _id: { $in: accessibleMapIds } }).select('name country').lean()
+    const countries = Array.from(new Set([
+      ...(user.assignedCountries || []),
+      ...assignedMaps.flatMap(m => [m.country, ...(typeof m.name === 'string' ? [m.name] : [(m.name as any)?.en, (m.name as any)?.es])]),
+    ].filter((value): value is string => typeof value === 'string' && !!value.trim())))
+    const countryRegexes = countries.map(value => new RegExp('^' + escapeRegex(value.trim()) + '$', 'i'))
+    const [places, businesses] = await Promise.all([
+      Place.find({ map: { $in: accessibleMapIds } }).select('_id').lean(),
+      Business.find({ 'location.country': { $in: countryRegexes } }).select('_id').lean(),
+    ])
+    filterConditions.push({ $or: [
+      { place: { $in: places.map(p => p._id) } },
+      { business: { $in: businesses.map(b => b._id) } },
+    ] })
+  }
 
   // Filter by country or map if provided
   if (country || map) {
@@ -256,6 +276,8 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
       Place.find({
         $or: [
           { name: searchRegex },
+          { 'name.en': searchRegex },
+          { 'name.es': searchRegex },
           { address: searchRegex },
           { country: searchRegex },
         ],
@@ -263,6 +285,8 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
       Business.find({
         $or: [
           { name: searchRegex },
+          { 'name.en': searchRegex },
+          { 'name.es': searchRegex },
           { 'location.address': searchRegex },
           { 'location.city': searchRegex },
           { 'location.country': searchRegex },
@@ -275,7 +299,11 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
 
     const searchOr: any[] = [
       { title: searchRegex },
+      { 'title.en': searchRegex },
+      { 'title.es': searchRegex },
       { description: searchRegex },
+      { 'description.en': searchRegex },
+      { 'description.es': searchRegex },
     ]
 
     if (placeIds.length > 0) {
@@ -291,14 +319,13 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
   const finalFilter =
     filterConditions.length > 1
       ? { $and: filterConditions }
-      : filterConditions[0]
+      : filterConditions[0] || {}
 
   const offerQuery = new QueryBuilder(
     Offer.find(finalFilter)
       .populate({
         path: 'business',
         select: 'name location media status category map country',
-        populate: { path: 'map', select: 'name country' },
       })
       .populate({
         path: 'place',
@@ -313,9 +340,8 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
     .paginate()
     .fields()
 
-  // Concurrently run query, pagination, and user authentication
-  const [user, rawData, meta] = await Promise.all([
-    getUserFromToken(authHeader),
+  // Fetch the rows and their total using the same scoped filter.
+  const [rawData, meta] = await Promise.all([
     offerQuery.modelQuery,
     offerQuery.getPaginationInfo(),
   ])
@@ -323,8 +349,6 @@ const getAllOffers = async (query: Record<string, unknown>, authHeader?: string)
   const isPremium = user && (
     [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.MAP_EDITOR].includes(user.role as any)
   )
-
-  const accessibleMapIds = await getAccessibleMapIds(user)
 
   const countries = rawData
     .map((offer: any) => offer.business?.location?.country || offer.business?.country)
@@ -378,7 +402,6 @@ const getOfferById = async (id: string, authHeader?: string): Promise<any> => {
       .populate({
         path: 'business',
         select: 'name location media status category map country',
-        populate: { path: 'map', select: 'name country' },
       }),
   ])
 
@@ -864,6 +887,7 @@ const redeemOffer = async (id: string, userId: string, authHeader?: string) => {
 export const OfferService = {
   createOffer,
   getAllOffers,
+  getManagedOffers: (query: Record<string, unknown>, authHeader?: string) => getAllOffers(query, authHeader, true),
   getOfferById,
   updateOffer,
   deleteOffer,

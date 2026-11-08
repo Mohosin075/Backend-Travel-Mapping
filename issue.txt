@@ -9,6 +9,7 @@ Solved
 Users:
 1. Improve the form of payment and registration without friction.
 2. The offers are not appearing on the offers page or on the dashboard either.
+Solved
 
 Users without buying a map:
 1. Block the map in general so that users who have not purchased the map do not use map loads and Google Maps does not count those loads.

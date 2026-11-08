@@ -12,6 +12,12 @@ import { fileAndBodyProcessorUsingDiskStorage } from '../../middleware/processRe
 const router = express.Router()
 
 router.get(
+  '/managed',
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MAP_EDITOR),
+  OfferController.getManagedOffers,
+)
+
+router.get(
   '/by-place-or-business/:id',
   OfferController.getOffersByPlaceOrBusinessId,
 )

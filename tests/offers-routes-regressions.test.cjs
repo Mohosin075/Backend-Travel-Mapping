@@ -19,6 +19,42 @@ const country = load('../frontend_giovafilm_roadtripeado/lib/offer-country.ts')
 const costaRica = { _id: 'cr', name: { en: 'Costa Rica Adventures', es: 'Aventuras Costa Rica' }, country: 'Costa Rica' }
 const puertoRico = { _id: 'pr', name: 'Puerto Rico', country: 'Puerto Rico' }
 
+test('offer search accepts legacy strings, translated names, missing metadata and literal punctuation', () => {
+  const { offerMatchesSearch } = load('../frontend_giovafilm_roadtripeado/lib/offer-search.ts')
+  const offer = { title: { en: 'Breakfast', es: 'Desayuno' }, place: { name: { en: 'Beach', es: 'Playa' } } }
+  assert.equal(offerMatchesSearch(offer, 'breakfast'), true)
+  assert.equal(offerMatchesSearch(offer, 'DESAYUNO'), true)
+  assert.equal(offerMatchesSearch(offer, 'playa'), true)
+  assert.equal(offerMatchesSearch(offer, 'missing'), false)
+  assert.equal(offerMatchesSearch(offer, '.*'), false)
+  assert.equal(offerMatchesSearch({}, ''), true)
+  assert.equal(offerMatchesSearch({}, 'anything'), false)
+  assert.equal(offerMatchesSearch({ title: 'Legacy offer' }, 'legacy'), true)
+  assert.equal(offerMatchesSearch({ business: { location: { city: 'San Juan' } } }, 'san juan'), true)
+})
+
+test('managed offer route requires staff auth and is registered before the offer ID route', () => {
+  const calls = []
+  const chain = { get() { return chain }, post() { return chain }, patch() { return chain }, delete() { return chain } }
+  const router = {
+    get: (...args) => calls.push(args), post() {},
+    route: name => { calls.push([name]); return chain },
+  }
+  const managed = () => {}
+  load('src/modules/offer/offer.route.ts', {
+    express: { default: { Router: () => router } },
+    './offer.controller': { OfferController: { getManagedOffers: managed } },
+    '../../middleware/auth': { default: (...roles) => ({ roles }) },
+    '../../middleware/processReqBody': { fileAndBodyProcessorUsingDiskStorage: () => () => {} },
+    '../../middleware/validateRequest': { default: () => () => {} },
+    '../../enum/user': { USER_ROLES: { ADMIN: 'admin', SUPER_ADMIN: 'super_admin', MAP_EDITOR: 'map_editor', USER: 'user' } },
+  })
+  assert.equal(calls[0][0], '/managed')
+  assert.deepEqual(plain(calls[0][1].roles), ['admin', 'super_admin', 'map_editor'])
+  assert.equal(calls[0][2], managed)
+  assert.ok(calls.findIndex(call => call[0] === '/:id') > 0)
+})
+
 test('offer country follows saved map ID despite a stale or translated country label', () => {
   assert.equal(country.resolveOfferMap([puertoRico, costaRica], 'cr', 'Puerto Rico'), costaRica)
   assert.equal(country.resolveOfferMap([puertoRico, costaRica], '', 'aventuras costa rica'), costaRica)
