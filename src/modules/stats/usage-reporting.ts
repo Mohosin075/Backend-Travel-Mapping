@@ -22,8 +22,6 @@ export const rankedViewers = (type: string, ids: string[], dateRange: any) =>
   UsageView.aggregate([
     ...viewerPipeline({ type, entityId: { $in: ids }, ...(dateRange ? { lastSeenAt: dateRange } : {}) }),
     { $group: { _id: '$entityId', count: { $sum: 1 }, viewerKeys: { $addToSet: '$viewerKey' } } },
-    { $sort: { count: -1, _id: 1 } },
-    { $limit: 20 },
     // Resolve profiles once per ranked entity rather than once per recorded view.
     { $set: { accountIds: { $map: {
       input: { $filter: { input: '$viewerKeys', as: 'key', cond: {
@@ -33,6 +31,10 @@ export const rankedViewers = (type: string, ids: string[], dateRange: any) =>
     { $lookup: { from: User.collection.name, localField: 'accountIds', foreignField: '_id',
       pipeline: [{ $match: { status: { $ne: 'deleted' } } }, { $project: { _id: 1 } }], as: 'accounts' } },
     { $project: { count: 1, profileCount: { $size: '$accounts' } } },
+    // Rank by identified profiles before limiting so guest-heavy entities
+    // cannot hide an entity with more registered profiles.
+    { $sort: { profileCount: -1, count: -1, _id: 1 } },
+    { $limit: 20 },
   ])
 
 export const entityViewers = (type: string, id: string, dateRange: any) =>

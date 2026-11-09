@@ -30,7 +30,7 @@ function chain(rows) {
 }
 const live = Array.from({length:151},(_,n)=>({_id:id(n+1),name:`Person ${n+1}`,email:`u${n+1}@example.test`,status:'active',createdAt:new Date(),address:{country:'Puerto Rico'}}));
 const deleted={_id:id(999),name:'Deleted',status:'deleted'};
-function service() {
+function service(overrides = {}) {
  const users=[...live,deleted];
  const current=new Date(),old=new Date(current); old.setFullYear(old.getFullYear()-1);
  const empty={find:()=>chain([]),aggregate:async()=>[],distinct:async()=>[],countDocuments:async()=>0};
@@ -41,8 +41,24 @@ function service() {
  for(const [module,name] of [['map','Map'],['place','Place'],['offer','Offer'],['business','Business'],['visited','Visited'],['review','Review']]) imports[`../${module}/${module}.model`]={[name]:empty};
  imports['../offer/offerRedemption.model']={OfferRedemption:{...empty,find:()=>chain([{_id:id(21),user:live[0],redemptionTime:current},{_id:id(22),user:live[0],redemptionTime:old},{_id:id(23),user:null}])}};
  imports['./usage-reporting'].entityViewers=async()=>[{viewerKey:`user:${live[0]._id}`},{viewerKey:`user:${deleted._id}`},{viewerKey:`user:${id(888)}`},{viewerKey:'guest:one'}];
+ Object.assign(imports, overrides);
  return load('src/modules/stats/stats.service.ts',imports).StatsService;
 }
+
+test('all three usage rankings order by profiles descending before applying the top-20 limit', async () => {
+ const rows = Array.from({length:25}, (_,n)=>({_id:id(200+n),name:`Entity ${n}`,title:`Offer ${n}`,count:100-n,profileCount:n+1}));
+ const model = {find:()=>chain(rows),aggregate:async()=>[],distinct:async()=>[],countDocuments:async()=>25};
+ const overrides = {
+  '../map/map.model':{Map:model}, '../place/place.model':{Place:model}, '../offer/offer.model':{Offer:model},
+  '../offer/offerRedemption.model':{OfferRedemption:{...model,aggregate:async()=>rows}},
+  './usage-reporting':{rankedViewers:async()=>rows,distinctViewers:async()=>[]},
+ };
+ const {usage} = await service(overrides).getReportsData();
+ for(const key of ['mostViewedMaps','mostOpenedPlaces','mostRedeemedOffers']) {
+  assert.deepEqual(Array.from(usage[key], row=>row.profileCount), Array.from({length:20},(_,n)=>25-n), key);
+  assert.equal(usage[key][0].id,id(224));
+ }
+});
 test('all registered profiles beyond 100 can be reached with accurate totals and no duplicates',async()=>{
  const svc=service(),seen=[];
  for(let page=1;page<=7;page++) {const result=await svc.getRegisteredUsers({page});assert.equal(result.total,151);assert.equal(result.totalPages,7);seen.push(...result.users.map(u=>String(u._id)));}

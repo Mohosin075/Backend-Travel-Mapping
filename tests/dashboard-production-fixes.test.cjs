@@ -108,6 +108,9 @@ test('rankings and drilldowns share the same time-scoped, deduplicated viewer pi
     assert.deepEqual(pipeline[2].$group._id, { type: '$type', entityId: '$entityId', viewerKey: '$viewerKey' })
   }
   assert.equal(calls[0].find(stage => stage.$limit).$limit, 20, 'ranking is bounded')
+  assert.deepEqual(calls[0].find(stage => stage.$sort).$sort, { profileCount: -1, count: -1, _id: 1 })
+  assert.ok(calls[0].findIndex(stage => stage.$project?.profileCount) < calls[0].findIndex(stage => stage.$sort), 'profiles are resolved before ranking')
+  assert.ok(calls[0].findIndex(stage => stage.$sort) < calls[0].findIndex(stage => stage.$limit), 'top 20 uses profile ranking')
   assert.equal(calls[1].some(stage => stage.$limit), false, 'every viewer is returned')
 })
 

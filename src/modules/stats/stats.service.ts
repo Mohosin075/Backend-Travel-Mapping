@@ -522,8 +522,8 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     rankedViewers('place', allowedPlaceIds, dateRange),
   ])
   const rankedMapIds = new Set(mapRanks.map(r => String(r._id)))
-  const mapsWithCounts = [...mapRanks, ...allowedMapDocs.filter(m => !rankedMapIds.has(String(m._id))).map(m => ({ _id: m._id, count: 0 }))]
-    .sort((a, b) => b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
+  const mapsWithCounts = [...mapRanks, ...allowedMapDocs.filter(m => !rankedMapIds.has(String(m._id))).map(m => ({ _id: m._id, count: 0, profileCount: 0 }))]
+    .sort((a, b) => (b.profileCount || 0) - (a.profileCount || 0) || b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
   const mostViewedMaps: IUsageItem[] = mapsWithCounts.map(r => {
     const doc = mapDocMap.get(String(r._id))
     return {
@@ -536,8 +536,8 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   })
   const placeDocMap = new globalThis.Map(allowedPlaceDocs.map(p => [String(p._id), p]))
   const rankedPlaceIds = new Set(placeRanks.map(r => String(r._id)))
-  const placesWithCounts = [...placeRanks, ...allowedPlaceDocs.filter(p => !rankedPlaceIds.has(String(p._id))).map(p => ({ _id: p._id, count: 0 }))]
-    .sort((a, b) => b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
+  const placesWithCounts = [...placeRanks, ...allowedPlaceDocs.filter(p => !rankedPlaceIds.has(String(p._id))).map(p => ({ _id: p._id, count: 0, profileCount: 0 }))]
+    .sort((a, b) => (b.profileCount || 0) - (a.profileCount || 0) || b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20)
   let mostOpenedPlaces: IUsageItem[] = placesWithCounts.map(r => ({
     id: String(r._id), name: localizeField(placeDocMap.get(String(r._id))?.name),
     profileCount: r.profileCount || 0,
@@ -574,7 +574,7 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     placeId: o.place?._id ? String(o.place._id) : undefined,
     count: redemptionRankMap.get(String(o._id))?.count || 0,
     profileCount: redemptionRankMap.get(String(o._id))?.profileCount || 0,
-  })).sort((a, b) => b.count - a.count || a.id!.localeCompare(b.id!)).slice(0, 20)
+  })).sort((a, b) => (b.profileCount || 0) - (a.profileCount || 0) || b.count - a.count || a.id!.localeCompare(b.id!)).slice(0, 20)
 
   // ==================== USER ACTIVITY & ENGAGEMENT ====================
   // Build scoped filters for Visited, Review, and OfferRedemption
