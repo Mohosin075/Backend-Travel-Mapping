@@ -16,6 +16,7 @@ Local implementation only. No production database or Stripe account was used for
 - First password setup uses the public `/set-password` page: verify email, enter the code, then set a password. Setup links, page copy and passwordless-account emails use verification/setup wording. The ordinary `/forgot-password` flow retains password-recovery wording. Both continue to use the same server OTP/reset-token checks.
 - Returning passwordless purchase accounts receive explicit setup guidance on login, without an automatic OTP redirect, email or login token. The login page also provides a setup link that requires no guessed password. Accounts with a saved password must match it before either login or a signup-verification redirect. Setup retains the same account and purchased maps.
 - Guest Stripe success/cancel URLs use the browser's validated frontend Origin, rather than always using `clientUrl`. New attempts retain that origin and cannot be resumed/redeemed from another origin. Requests without an Origin fall back to `clientUrl`; unapproved production origins are rejected before account creation.
+- Paid promo checkout uses the same origin validation. Success/cancel URLs retain the selected map, and an active promo reservation cannot be redirected to another frontend origin. Promo visitors continue to use the existing login/register flow; free promos grant access without Stripe.
 
 ## Localhost returns
 
@@ -41,7 +42,7 @@ Run `node --test tests/guest-map-checkout.test.cjs tests/map-payment-currency.te
 
 Verified locally for this change:
 
-- Purchase/auth/promo/security/currency and component-flow tests: 170 passed, 0 failed, including returning passwordless buyers, wrong passwords, first-password setup versus real forgotten-password flow, localhost/production return origins, rejected redirect origins, existing-email button navigation, timeout feedback and invalid email feedback. See `auth-purchase-promo-audit.md` for coverage.
+- Purchase/auth/promo/security/currency and component-flow tests: 177 passed, 0 failed, including free/paid promo returns, returning passwordless buyers, wrong passwords, first-password setup versus real forgotten-password flow, localhost/production return origins, rejected redirect origins, existing-email button navigation, timeout feedback and invalid email feedback. See `auth-purchase-promo-audit.md` for coverage.
 - Backend TypeScript check and frontend production build: passed.
 - Full non-integration suite retains the same 19 pre-existing failing test names. Running the old suite against committed versions of every changed file reproduced those failures (111 passed / 19 failed before this change).
 - Live Stripe, actual email delivery, database transactions/index creation and browser end-to-end behavior remain staging checks; local tests mock those external services.

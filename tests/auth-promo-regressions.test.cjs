@@ -62,7 +62,7 @@ function promoFixture(options = {}) {
   const doc = () => state.promo ? { ...clone(state.promo), toObject: () => clone(state.promo) } : null;
   const imports = {
     crypto, '../../enum/user': enums, '../../errors/ApiError': ApiError,
-    '../../config': { clientUrl: 'https://example.test' }, '../../helpers/localize': { localizeField: () => 'Map' },
+    '../../config': { clientUrl: 'https://example.test', node_env: 'production', ...options.config }, '../../helpers/localize': { localizeField: () => 'Map' },
     mongoose: { Types: { ObjectId: class { constructor(id) { return new String(id); } static isValid(id) { return /^[a-f\d]{24}$/i.test(id); } } } },
     '../map/map.model': { Map: { findById: () => query(options.missingMap ? null : { _id: mapId, name: 'Map', status: 'Published', isPaid: true, isActive: true, ...options.map }) } },
     '../user/user.model': { User: {
@@ -115,6 +115,9 @@ function promoFixture(options = {}) {
       return payment || { status: 'pending' };
     } } },
   };
+  imports['../../helpers/checkoutOrigin'] = load('src/helpers/checkoutOrigin.ts', {
+    '../config': imports['../../config'], '../errors/ApiError': ApiError,
+  });
   return { state, service: load('src/modules/promo/promo.service.ts', imports).PromoServices };
 }
 test('free targeted promo grants exactly once to a verified recipient', async () => {
@@ -162,6 +165,34 @@ test('paid promo charges the server discount and database email, retaining its p
   assert.equal(request.metadata.promoCode, 'PROMO');
   assert.match(request.success_url, /session_id=\{CHECKOUT_SESSION_ID\}/);
   assert.equal(f.state.payments[0].amount, 5);
+});
+test('paid promo Stripe return stays on localhost when started from local development', async () => {
+  const f = promoFixture({ promo: { price: 5 }, config: { node_env: 'development' } });
+  await f.service.createPromoCheckoutSession({ authId: userId }, 'PROMO', undefined, 'http://localhost:3000');
+  const { request } = f.state.stripeCalls[0];
+  assert.equal(new URL(request.success_url).origin, 'http://localhost:3000');
+  assert.equal(new URL(request.cancel_url).origin, 'http://localhost:3000');
+  assert.equal(new URL(request.success_url).searchParams.get('mapId'), mapId);
+  assert.equal(f.state.promo.checkoutReturnOrigin, 'http://localhost:3000');
+});
+test('production paid promo preserves its approved frontend origin', async () => {
+  const f = promoFixture({ promo: { price: 5 } });
+  await f.service.createPromoCheckoutSession({ authId: userId }, 'PROMO', undefined, 'https://example.test');
+  assert.equal(new URL(f.state.stripeCalls[0].request.success_url).origin, 'https://example.test');
+});
+for (const origin of ['https://evil.test', 'https://example.test.evil.test', 'http://localhost:3000', 'https://example.test/redirect']) {
+  test(`production promo refuses unapproved return origin ${origin}`, async () => {
+    const f = promoFixture({ promo: { price: 5 } });
+    await assert.rejects(f.service.createPromoCheckoutSession({ authId: userId }, 'PROMO', undefined, origin));
+    assert.equal(f.state.stripeCalls.length, 0);
+    assert.equal(f.state.promo.checkoutReservationId, undefined);
+  });
+}
+test('promo reservation cannot redirect an existing checkout to another frontend', async () => {
+  const f = promoFixture({ promo: { price: 5 }, config: { cors_origins: ['http://localhost:3000'] } });
+  await f.service.createPromoCheckoutSession({ authId: userId }, 'PROMO', undefined, 'http://localhost:3000');
+  await assert.rejects(f.service.createPromoCheckoutSession({ authId: userId }, 'PROMO', undefined, 'https://example.test'), /website where it was started/);
+  assert.equal(f.state.stripeCalls.length, 1);
 });
 test('cancelled promo checkout resumes the existing session with one order', async () => {
   const f = promoFixture({ promo: { price: 5 } });

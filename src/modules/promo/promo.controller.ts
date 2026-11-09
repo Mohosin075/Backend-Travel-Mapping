@@ -25,7 +25,7 @@ const verifyPromoCode = catchAsync(async (req: Request, res: Response) => {
   }
 
   const result = await PromoServices.verifyPromoCode(code, mapId)
-  const { checkoutReservationId, checkoutUserId, checkoutMapId, checkoutExpiresAt, checkoutSessionId, ...publicPromo } = result
+  const { checkoutReservationId, checkoutUserId, checkoutMapId, checkoutExpiresAt, checkoutSessionId, checkoutReturnOrigin, ...publicPromo } = result
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
@@ -70,6 +70,7 @@ const createPromoCheckoutSession = catchAsync(
       user,
       code,
       mapId,
+      req.headers.origin,
     )
     sendResponse(res, {
       statusCode: StatusCodes.OK,

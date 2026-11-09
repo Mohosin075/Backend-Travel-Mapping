@@ -14,6 +14,7 @@ const promoLinkSchema = new Schema<IPromoLink, PromoLinkModel>(
     checkoutMapId: { type: Schema.Types.ObjectId, ref: 'Map', default: null },
     checkoutExpiresAt: { type: Date, default: null },
     checkoutSessionId: { type: String, default: null },
+    checkoutReturnOrigin: { type: String, default: null },
     mapId: {
       type: Schema.Types.ObjectId,
       ref: 'Map',

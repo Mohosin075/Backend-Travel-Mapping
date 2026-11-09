@@ -59,6 +59,9 @@ function fixture(options = {}) {
     '../../config/stripe': { checkout: { sessions: { retrieve: async id => { calls.stripe.push(id); return session; } } } },
     '../auth/auth.helper': { AuthHelper: { createToken: (...args) => { calls.tokens.push(args); return { accessToken: 'access', refreshToken: 'refresh' }; } } },
   };
+  imports['../../helpers/checkoutOrigin'] = load('src/helpers/checkoutOrigin.ts', {
+    '../config': imports['../../config'], '../errors/ApiError': imports['../../errors/ApiError'],
+  });
   const controller = load('src/modules/payment/guest-checkout.controller.ts', imports).GuestCheckoutController;
   const res = { cookie: (...args) => calls.cookies.push(args) };
   return { controller, calls, res, attempt: () => attempt, user: () => user };

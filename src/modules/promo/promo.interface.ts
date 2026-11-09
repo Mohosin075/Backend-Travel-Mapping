@@ -18,6 +18,7 @@ export interface IPromoLink {
   checkoutMapId?: Types.ObjectId | null
   checkoutExpiresAt?: Date | null
   checkoutSessionId?: string | null
+  checkoutReturnOrigin?: string | null
 }
 
 export type PromoLinkModel = Model<IPromoLink, Record<string, never>>

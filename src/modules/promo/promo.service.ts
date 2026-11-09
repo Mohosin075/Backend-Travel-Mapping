@@ -14,6 +14,7 @@ import { io } from '../../server'
 import { localizeField } from '../../helpers/localize'
 import { USER_STATUS } from '../../enum/user'
 import { PaymentServices } from '../payment/payment.service'
+import { getCheckoutReturnOrigin } from '../../helpers/checkoutOrigin'
 
 const validatePromoUser = (user: any, recipientEmail?: string | null) => {
   if (!user || user.status !== USER_STATUS.ACTIVE) {
@@ -135,7 +136,9 @@ const createPromoCheckoutSession = async (
   user: any,
   code: string,
   userMapId?: string,
+  origin?: string,
 ): Promise<{ sessionId: string; url: string }> => {
+  const returnOrigin = getCheckoutReturnOrigin(origin)
   const promoDetails = await verifyPromoCode(code, userMapId)
   const buyer = await User.findById(user.authId)
   validatePromoUser(buyer, promoDetails.recipientEmail)
@@ -190,14 +193,18 @@ const createPromoCheckoutSession = async (
     ],
   }, { $set: { checkoutReservationId: crypto.randomBytes(16).toString('hex'),
     checkoutUserId: buyer!._id, checkoutMapId: mapId,
+    checkoutReturnOrigin: returnOrigin,
     checkoutExpiresAt: new Date(Math.floor(Date.now() / 1000) * 1000 + 23 * 60 * 60 * 1000) },
     $unset: { checkoutSessionId: 1 } }, { new: true }).lean<IPromoLink>()
   if (!reservation) reservation = await PromoLink.findOne({ code, isUsed: false,
     checkoutUserId: buyer!._id, checkoutMapId: mapId, checkoutExpiresAt: { $gt: now } }).lean<IPromoLink>()
   if (!reservation) throw new ApiError(StatusCodes.CONFLICT, 'This invitation is already in checkout. Please retry after the current checkout expires.')
+  if (reservation.checkoutReturnOrigin && reservation.checkoutReturnOrigin !== returnOrigin) {
+    throw new ApiError(StatusCodes.CONFLICT, 'Continue this checkout on the website where it was started.')
+  }
   if (reservation.checkoutSessionId) {
     const previous = await stripe.checkout.sessions.retrieve(reservation.checkoutSessionId)
-    return { sessionId: previous.id, url: previous.url || `${config.clientUrl}/claim-promo?code=${encodeURIComponent(code)}&success=true&session_id=${previous.id}` }
+    return { sessionId: previous.id, url: previous.url || `${returnOrigin}/claim-promo?code=${encodeURIComponent(code)}&mapId=${mapId}&success=true&session_id=${previous.id}` }
   }
 
   const session = await stripe.checkout.sessions.create({
@@ -217,8 +224,8 @@ const createPromoCheckoutSession = async (
       },
     ],
     mode: 'payment',
-    success_url: `${config.clientUrl}/claim-promo?code=${encodeURIComponent(code)}&success=true&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${config.clientUrl}/claim-promo?code=${encodeURIComponent(code)}&mapId=${mapId}&cancelled=true`,
+    success_url: `${returnOrigin}/claim-promo?code=${encodeURIComponent(code)}&mapId=${mapId}&success=true&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${returnOrigin}/claim-promo?code=${encodeURIComponent(code)}&mapId=${mapId}&cancelled=true`,
     customer_email: buyer!.email,
     metadata: {
       type: 'promo_payment',

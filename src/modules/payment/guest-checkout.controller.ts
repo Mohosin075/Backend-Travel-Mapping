@@ -13,6 +13,7 @@ import { GuestCheckout } from './guest-checkout.model'
 import { Payment } from './payment.model'
 import { PaymentServices } from './payment.service'
 import stripe from '../../config/stripe'
+import { getCheckoutReturnOrigin as getReturnOrigin } from '../../helpers/checkoutOrigin'
 
 const tokenSchema = z.string().regex(/^[a-f0-9]{64}$/)
 const startSchema = z.object({
@@ -22,23 +23,6 @@ const startSchema = z.object({
 })
 const completeSchema = z.object({ checkoutToken: tokenSchema, sessionId: z.string().regex(/^cs_[a-zA-Z0-9_]+$/).max(255) })
 const hash = (token: string) => createHash('sha256').update(token).digest('hex')
-const getReturnOrigin = (origin?: string): string => {
-  if (!origin) return new URL(config.clientUrl).origin
-  let url: URL
-  try { url = new URL(origin) }
-  catch { throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid checkout origin.') }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
-      url.pathname !== '/' || url.search || url.hash) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid checkout origin.')
-  }
-  const allowed = [config.clientUrl, ...(config.cors_origins || [])].some(value => {
-    try { return new URL(value).origin === url.origin } catch { return false }
-  })
-  const localDevelopment = config.node_env !== 'production' &&
-    ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-  if (!allowed && !localDevelopment) throw new ApiError(StatusCodes.FORBIDDEN, 'Checkout origin is not allowed.')
-  return url.origin
-}
 const loginRequired = (res: any) => sendResponse(res, {
   statusCode: StatusCodes.OK, success: true,
   message: 'Please sign in or verify your email to continue.', data: { loginRequired: true },
