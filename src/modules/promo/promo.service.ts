@@ -70,7 +70,7 @@ const claimFreePromo = async (
   userId: string,
   code: string,
   userMapId?: string,
-): Promise<{ success: boolean; message: string }> => {
+): Promise<{ success: boolean; message: string; mapId: string; mapName: string }> => {
   const promoDetails = await verifyPromoCode(code, userMapId)
 
   const user = await User.findById(userId)
@@ -128,6 +128,8 @@ const claimFreePromo = async (
 
   return {
     success: true,
+    mapId: String(mapId),
+    mapName: localizeField(map.name),
     message: `Promo claimed successfully! ${localizeField(map.name) || 'The map'} is now unlocked.`,
   }
 }

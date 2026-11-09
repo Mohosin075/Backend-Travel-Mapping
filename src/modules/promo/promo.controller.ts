@@ -51,6 +51,7 @@ const claimFreePromo = catchAsync(async (req: Request, res: Response) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: result.message,
+    data: { mapId: result.mapId, mapName: result.mapName },
   })
 })
 

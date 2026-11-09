@@ -18,7 +18,9 @@ function ui(file, options = {}) {
   const storage = new Map(options.storage || []);
   const hooks = [], dependencies = [], effects = [], routes = [], actions = [], calls = {};
   let cursor = 0, Component;
-  const dispatch = action => { actions.push(action); if (action.type === 'setUser') state.auth = action.payload; };
+  const timers = [];
+  const router = { push: path => routes.push(path), replace: path => { routes.push(path); } };
+  const dispatch = action => { actions.push(action); if (action.type === 'setUser') state.auth = action.payload; if (action.update && options.profile) action.update(options.profile); };
   const react = {
     useState: initial => {
       const index = cursor++;
@@ -26,7 +28,12 @@ function ui(file, options = {}) {
       return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value; }];
     },
     useRef: initial => { const index = cursor++; return hooks[index] ||= { current: initial }; },
-    useMemo: fn => fn(),
+    useMemo: (fn, deps) => {
+      const index = cursor++;
+      if (!dependencies[index] || deps.some((value, n) => value !== dependencies[index][n])) hooks[index] = fn();
+      dependencies[index] = deps;
+      return hooks[index];
+    },
     useEffect: (fn, deps) => {
       const index = cursor++;
       if (!dependencies[index] || deps.some((value, n) => value !== dependencies[index][n])) effects.push(fn);
@@ -46,7 +53,14 @@ function ui(file, options = {}) {
     'react-redux': { useDispatch: () => dispatch },
     'react-hook-form': { useForm: () => ({ register: name => ({ name }), handleSubmit: fn => fn, setValue() {}, watch: name => options.params?.[name] || '', formState: { errors: {} } }) },
     '@hookform/resolvers/zod': { zodResolver: () => ({}) },
-    'next/link': 'a', 'next/navigation': { useSearchParams: () => params, useRouter: () => ({ push: path => routes.push(path), replace: path => routes.push(path) }) },
+    'next/link': 'a', 'next/navigation': { useSearchParams: () => params, useRouter: () => router },
+    'next-themes': { useTheme: () => ({ resolvedTheme: 'light' }) },
+    '@vis.gl/react-google-maps': { APIProvider: 'provider', Map: 'map', MapControl: 'control', ControlPosition: {}, useMapsLibrary: () => undefined },
+    './MapFilters': { MapFilters: 'filters', SelectedMapFilter: 'selected-filter' },
+    '@/lib/record-visit': { trackUsage() {}, normalizePinType: value => value },
+    '@/redux/features/category/categoryApi': { useGetCategoriesQuery: () => ({ data: { data: [] }, isSuccess: true }) },
+    '@/redux/features/visited/visitedApi': { useGetMyVisitedPlacesQuery: () => ({ data: { data: [] } }) },
+    '@/redux/features/public/publicApi': { useGetPublicPlacesBusinessQuery: args => { (calls.discovery ||= []).push(args); return { currentData: { data: [] }, isSuccess: true }; } },
     'lucide-react': new Proxy({}, { get: () => 'icon' }),
     'motion/react': { motion: new Proxy({}, { get: (_, name) => name }) },
     sonner: { toast: { success() {}, error() {}, loading() {} } },
@@ -62,17 +76,23 @@ function ui(file, options = {}) {
     '@/redux/features/payment/paymentApi': authApi,
     '@/redux/features/promo/promoApi': { ...Object.fromEntries(['useClaimFreePromoMutation', 'useCreatePromoCheckoutSessionMutation', 'useVerifyPromoPaymentMutation'].map(name => [name, mutation(name)])),
       useVerifyPromoCodeQuery: () => ({ data: options.promo ? { data: options.promo } : undefined, isLoading: false, isError: false, refetch() {} }) },
-    '@/redux/features/user/userApi': { useGetProfileQuery: () => ({ data: options.profile, isFetching: false }) },
-    '@/redux/features/map/mapApi': { useGetMapByIdQuery: () => ({ data: { data: { _id: mapId, name: 'New Map', isPaid: true } }, isLoading: false }),
-      useGetMapsQuery: () => ({ data: { data: [{ _id: mapId, name: 'New Map', isPaid: true }], meta: { totalPage: 1 } }, isFetching: false }) },
+    '@/redux/features/user/userApi': {
+      userApi: { util: { updateQueryData: (endpoint, args, update) => ({ type: 'updateProfileCache', update }) } },
+      useGetProfileQuery: () => ({ data: options.profile, isFetching: false, refetch: () => ({ unwrap: async () => {
+        (calls.refetchProfile ||= []).push(true);
+        return options.profileResponses?.shift() || options.profile;
+      } }) }),
+    },
+    '@/redux/features/map/mapApi': { useGetMapByIdQuery: () => ({ data: { data: options.mapDetail || { _id: mapId, name: 'New Map', isPaid: true } }, isLoading: false }),
+      useGetMapsQuery: () => ({ data: { data: options.maps || [{ _id: mapId, name: 'New Map', isPaid: true }], meta: { totalPage: 1 } }, isFetching: false, isSuccess: true }) },
   };
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../../frontend_giovafilm_roadtripeado', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText, { module, exports: module.exports, require: name => imports[name] ||
     (/ui\/(button|input|label|checkbox)/.test(name) ? { Button: 'button', Input: 'input', Label: 'label', Checkbox: 'checkbox' } : name === 'zod' ? require('zod') : {}),
-    console, URLSearchParams, crypto: crypto.webcrypto, localStorage: storageApi, sessionStorage: storageApi,
-    window: { location: { origin: 'https://example.test', assign: path => routes.push(path) } }, setTimeout: () => 0, clearTimeout() {},
+    console, URLSearchParams, process: { env: {} }, crypto: crypto.webcrypto, localStorage: storageApi, sessionStorage: storageApi,
+    window: { innerWidth: 1200, addEventListener() {}, removeEventListener() {}, location: { origin: 'https://example.test', assign: path => routes.push(path) } }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
   });
   Component = module.exports.default || module.exports[options.exportName];
   const render = () => {
@@ -82,12 +102,76 @@ function ui(file, options = {}) {
     if (inner) tree = inner.type();
     return tree;
   };
-  return { render, routes, calls, actions, storage, params, async effects() {
+  return { render, routes, calls, actions, storage, params, timers() { for (const fn of timers.splice(0)) fn(); }, async effects() {
     for (const fn of effects.splice(0)) fn();
     await new Promise(resolve => setImmediate(resolve));
   } };
 }
 const find = (tree, type) => nodes(tree).find(node => node.type === type);
+
+for (const outsideCatalogue of [false, true]) {
+  test(`cached map page switches from Puerto Rico to promo map${outsideCatalogue ? ' outside first catalogue page' : ''}`, async () => {
+    const oldMap = 'a'.repeat(24);
+    const maps = [{ _id: oldMap, name: 'Puerto Rico' }, ...(!outsideCatalogue ? [{ _id: mapId, name: 'New Map' }] : [])];
+    const f = ui('components/Common/maps/map.tsx', { maps, profile: { purchasedMaps: [oldMap, mapId] }, accessToken: 'token',
+      storage: [['selectedMapId', oldMap], ['selectedCountryFilter', 'Puerto Rico'], ['mapCameraState', JSON.stringify({ center: { lat: 18, lng: -66 }, zoom: 13 })]] });
+    f.render(); await f.effects(); f.render(); await f.effects();
+    f.params.set('mapId', mapId);
+    f.render(); await f.effects(); f.render(); await f.effects();
+    assert.equal(f.calls.discovery.at(-1).map, mapId);
+    assert.equal(f.storage.get('selectedMapId'), mapId);
+    assert.equal(f.storage.get('selectedCountryFilter'), 'New Map');
+    assert.equal(f.storage.has('mapCameraState'), false);
+    assert.equal(f.routes.at(-1), '/maps');
+    f.params.delete('mapId');
+    f.render(); await f.effects();
+    assert.equal(f.calls.discovery.at(-1).map, mapId);
+    assert.equal(f.storage.get('selectedCountryFilter'), 'New Map');
+  });
+}
+
+for (const paid of [false, true]) {
+  test(`${paid ? 'paid' : 'free'} promo opens the fulfilled map despite stale Puerto Rico selection`, async () => {
+    const oldMap = 'a'.repeat(24);
+    const options = { accessToken: 'token', params: { code: 'PROMO', ...(paid ? { success: 'true', session_id: 'cs_test' } : {}) },
+      profile: { verified: true, purchasedMaps: [oldMap] },
+      promo: { mapId, mapName: 'New Map', price: paid ? 10 : 0 },
+      storage: [['selectedMapId', oldMap], ['selectedCountryFilter', 'Puerto Rico']],
+      responses: { [paid ? 'useVerifyPromoPaymentMutation' : 'useClaimFreePromoMutation']: { success: true, data: { mapId, mapName: 'New Map' } } } };
+    const f = ui('app/(common)/claim-promo/page.tsx', options);
+    f.render(); await f.effects();
+    assert.ok(options.profile.purchasedMaps.includes(mapId));
+    assert.ok(f.calls.refetchProfile.length);
+    // Promo invalidation can remove its cached details before the user opens the map.
+    options.promo = undefined;
+    const button = nodes(f.render()).find(node => node.type === 'button' && JSON.stringify(node.props.children).includes('promo_claim.open_map'));
+    assert.ok(button);
+    button.props.onClick();
+    assert.equal(f.routes.at(-1), `/maps?mapId=${mapId}`);
+    assert.equal(f.storage.get('selectedMapId'), mapId);
+    assert.notEqual(f.storage.get('selectedCountryFilter'), 'Puerto Rico');
+    if (!paid) { f.timers(); assert.equal(f.routes.at(-1), `/maps?mapId=${mapId}`); }
+  });
+}
+
+test('legacy paid promo return uses the verified receipt rather than the first purchased map', async () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO', success: 'true' },
+    profile: { purchasedMaps: ['a'.repeat(24)] }, responses: { useVerifyPromoPaymentMutation: { data: { mapId } } } });
+  f.render(); await f.effects();
+  const button = nodes(f.render()).find(node => node.type === 'button' && JSON.stringify(node.props.children).includes('promo_claim.open_map'));
+  button.props.onClick();
+  assert.equal(f.routes.at(-1), `/maps?mapId=${mapId}`);
+});
+
+test('promo fulfilment refreshes again if an older in-flight profile omits the new map', async () => {
+  const options = { accessToken: 'token', params: { code: 'PROMO', success: 'true' },
+    profile: { purchasedMaps: [] }, profileResponses: [{ purchasedMaps: [] }, { purchasedMaps: [mapId] }],
+    responses: { useVerifyPromoPaymentMutation: { data: { mapId } } } };
+  const f = ui('app/(common)/claim-promo/page.tsx', options);
+  f.render(); await f.effects();
+  assert.equal(f.calls.refetchProfile.length, 2);
+  assert.deepEqual(options.profile.purchasedMaps, [mapId]);
+});
 
 for (const redirect of ['/catalog/checkout?mapId=' + mapId + '&resume=1', '/claim-promo?code=PROMO&mapId=' + mapId]) {
   test(`unverified login preserves return path through OTP: ${redirect}`, async () => {

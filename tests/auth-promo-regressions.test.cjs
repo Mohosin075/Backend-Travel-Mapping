@@ -122,7 +122,9 @@ function promoFixture(options = {}) {
 }
 test('free targeted promo grants exactly once to a verified recipient', async () => {
   const f = promoFixture();
-  await f.service.claimFreePromo(userId, 'PROMO');
+  const receipt = await f.service.claimFreePromo(userId, 'PROMO');
+  assert.equal(receipt.mapId, mapId);
+  assert.equal(typeof receipt.mapName, 'string');
   assert.equal(f.state.promo.isUsed, true);
   assert.deepEqual(f.state.user.purchasedMaps, [mapId]);
   await assert.rejects(f.service.claimFreePromo(userId, 'PROMO'), /already been used/);
