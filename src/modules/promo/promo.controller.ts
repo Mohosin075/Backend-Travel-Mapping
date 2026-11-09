@@ -8,6 +8,12 @@ import { localizeDocument } from '../../helpers/localize'
 
 const promoFields = ['mapId.name']
 
+const verifyPromoPayment = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user as JwtPayload
+  const result = await PromoServices.verifyPromoPayment(user.authId, req.body.code, req.body.sessionId)
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Promo payment verified', data: result })
+})
+
 const verifyPromoCode = catchAsync(async (req: Request, res: Response) => {
   const { code, mapId } = req.query as { code?: string; mapId?: string }
   if (!code) {
@@ -19,11 +25,12 @@ const verifyPromoCode = catchAsync(async (req: Request, res: Response) => {
   }
 
   const result = await PromoServices.verifyPromoCode(code, mapId)
+  const { checkoutReservationId, checkoutUserId, checkoutMapId, checkoutExpiresAt, checkoutSessionId, ...publicPromo } = result
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Promo link is valid',
-    data: result,
+    data: publicPromo,
   })
 })
 
@@ -128,6 +135,7 @@ const getPromoStats = catchAsync(async (req: Request, res: Response) => {
 })
 
 export const PromoControllers = {
+  verifyPromoPayment,
   verifyPromoCode,
   claimFreePromo,
   createPromoCheckoutSession,

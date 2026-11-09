@@ -9,6 +9,8 @@ const paymentSchema = new Schema<IPayment, PaymentModel>(
       ref: 'User',
       required: true,
     },
+    guestCheckoutKey: { type: String },
+    promoCheckoutKey: { type: String },
     mapId: {
       type: Schema.Types.ObjectId,
       ref: 'Map',
@@ -62,6 +64,8 @@ const paymentSchema = new Schema<IPayment, PaymentModel>(
 )
 
 paymentSchema.index({ userId: 1 });
+paymentSchema.index({ guestCheckoutKey: 1 }, { unique: true, sparse: true });
+paymentSchema.index({ promoCheckoutKey: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ paymentIntentId: 1 });
 paymentSchema.index({ status: 1, createdAt: -1 });
 paymentSchema.index({ mapId: 1, status: 1, createdAt: -1 });

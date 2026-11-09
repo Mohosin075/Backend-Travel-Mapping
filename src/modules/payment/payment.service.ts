@@ -28,6 +28,7 @@ const MAP_PAYMENT_CURRENCY = 'usd'
 const createCheckoutSession = async (
   user: any,
   payload: any,
+  idempotencyKey?: string,
 ): Promise<{ sessionId: string; url: string }> => {
   try {
     const map = await Map.findById(payload.mapId)
@@ -48,6 +49,12 @@ const createCheckoutSession = async (
     const amount = map.price
     const currency = MAP_PAYMENT_CURRENCY
 
+    if (!idempotencyKey) {
+      const buyer = await User.findById(user.authId)
+      if (buyer?.purchasedMaps?.some(id => String(id) === String(map._id))) {
+        throw new ApiError(StatusCodes.CONFLICT, 'You already own this map.')
+      }
+    }
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -72,11 +79,28 @@ const createCheckoutSession = async (
         `${config.clientUrl}/payment-failed?success=false`,
       customer_email: user.email,
       metadata: {
+        ...payload.metadata,
         userId: user.authId.toString(),
         mapId: payload.mapId.toString(),
-        ...payload.metadata,
       },
-    })
+    }, idempotencyKey ? { idempotencyKey } : undefined)
+
+    if (idempotencyKey) {
+      if (session.status === 'expired') {
+        throw new ApiError(StatusCodes.BAD_REQUEST, 'Checkout expired. Verify your email and sign in to try again.')
+      }
+      // Retry after Stripe success / DB failure must reuse the same payment.
+      await Payment.updateOne({ guestCheckoutKey: idempotencyKey }, { $setOnInsert: {
+        guestCheckoutKey: idempotencyKey,
+        userId: user.authId, mapId: payload.mapId, userEmail: user.email,
+        amount: session.amount_total! / 100, currency: session.currency!.toUpperCase(), paymentMethod: 'stripe',
+        paymentIntentId: session.id, status: 'pending',
+        metadata: { checkoutSessionId: session.id, mapId: payload.mapId.toString() },
+      } }, { upsert: true }).catch(async (error: any) => {
+        if (error.code !== 11000 || !await Payment.findOne({ guestCheckoutKey: idempotencyKey })) throw error
+      })
+      return { sessionId: session.id, url: session.url || payload.successUrl.replace('{CHECKOUT_SESSION_ID}', session.id) }
+    }
 
     await Payment.create({
       userId: user.authId,
@@ -134,6 +158,10 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
       throw new ApiError(StatusCodes.NOT_FOUND, 'Payment not found')
     }
 
+    if (payment.status === 'refunded') {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'This payment was refunded')
+    }
+
     // Update payment status based on session
     if (
       stripeSession.payment_status === 'paid' &&
@@ -148,6 +176,7 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
         payment.metadata = {
           ...payment.metadata,
           stripeSessionId: stripeSession.id,
+          paymentIntentId,
         }
         await payment.save({ session: mongooseSession })
 
@@ -168,8 +197,8 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
         const promoCode =
           stripeSession.metadata?.promoCode || payment.metadata?.promoCode
         if (promoCode) {
-          await PromoLink.findOneAndUpdate(
-            { code: promoCode, isUsed: false },
+          const claimedPromo = await PromoLink.findOneAndUpdate(
+            { code: promoCode, $or: [{ isUsed: false }, { usedBy: payment.userId }] },
             {
               isUsed: true,
               usedBy: payment.userId,
@@ -177,6 +206,7 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
             },
             { session: mongooseSession },
           )
+          if (!claimedPromo) throw new ApiError(StatusCodes.CONFLICT, 'This promo was claimed by another account. Your payment is retained; please contact support.')
           console.log(
             `verifyCheckoutSession: PromoLink code: ${promoCode} marked as used`,
           )
@@ -186,15 +216,17 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
         const user = await payment.populate('userId')
         const userData = user.userId as any
 
+        await mongooseSession.commitTransaction()
+
         if (userData) {
           await emailHelper.sendEmail({
             to: userData.email,
             subject: 'Payment Successful',
-            html: `<p>Hi ${userData.name}, your payment of ${payment.amount} ${payment.currency} was successful.</p>`,
-          })
+            html: payment.guestCheckoutKey
+              ? `<p>Your map purchase is ready.</p><p><a href="${config.clientUrl}/set-password?email=${encodeURIComponent(payment.userEmail)}">Verify your email and set a password</a> to return to your account later.</p>`
+              : `<p>Hi ${userData.name}, your payment of ${payment.amount} ${payment.currency} was successful.</p>`,
+          }).catch(error => console.error('Payment receipt email failed:', error))
         }
-
-        await mongooseSession.commitTransaction()
       } catch (error) {
         await mongooseSession.abortTransaction()
         throw error
@@ -203,7 +235,7 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
       }
     } else if (
       stripeSession.payment_status === 'unpaid' &&
-      payment.status !== 'failed'
+      payment.status === 'pending'
     ) {
       payment.status = 'failed'
       await payment.save()

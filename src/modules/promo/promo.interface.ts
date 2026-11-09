@@ -13,6 +13,11 @@ export interface IPromoLink {
   usedBy?: Types.ObjectId | null
   usedAt?: Date | null
   expiresAt?: Date | null
+  checkoutReservationId?: string | null
+  checkoutUserId?: Types.ObjectId | null
+  checkoutMapId?: Types.ObjectId | null
+  checkoutExpiresAt?: Date | null
+  checkoutSessionId?: string | null
 }
 
 export type PromoLinkModel = Model<IPromoLink, Record<string, never>>

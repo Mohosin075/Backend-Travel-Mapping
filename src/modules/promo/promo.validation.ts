@@ -35,6 +35,10 @@ export const sendBulkEmailsZodSchema = z.object({
 })
 
 export const PromoValidations = {
+  verifyPayment: z.object({ body: z.object({
+    code: z.string().min(1).max(100),
+    sessionId: z.string().regex(/^cs_[a-zA-Z0-9_]+$/).max(255).optional(),
+  }) }),
   bulkGeneratePromoZodSchema,
   claimPromoZodSchema,
   createPromoCheckoutSessionZodSchema,

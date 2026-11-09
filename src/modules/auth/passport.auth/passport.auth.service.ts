@@ -1,4 +1,4 @@
-import { USER_STATUS } from '../../../enum/user'
+import { USER_ROLES, USER_STATUS } from '../../../enum/user'
 import { ILoginData } from '../../../interfaces/auth'
 import { StatusCodes } from 'http-status-codes'
 import ApiError from '../../../errors/ApiError'
@@ -16,9 +16,15 @@ const handleGoogleLogin = async (
   const email = emails[0].value.toLowerCase().trim()
   const isUserExist = await User.findOne({
     email,
-    status: { $in: [USER_STATUS.ACTIVE] },
   })
   if (isUserExist) {
+    if (isUserExist.status !== USER_STATUS.ACTIVE) throw new ApiError(StatusCodes.FORBIDDEN, 'This account is not active. Please contact support.')
+    // Google proves ownership of this email. Retire any pre-existing guest
+    // checkout capability before issuing this account's normal login tokens.
+    if (!isUserExist.verified) {
+      await User.findByIdAndUpdate(isUserExist._id, { $set: { verified: true,
+        ...(isUserExist.provider === 'guest_purchase' ? { appId: id, provider: 'google' } : {}) } })
+    }
     //return only the token
     const tokens = AuthHelper.createToken(
       isUserExist._id,
@@ -39,14 +45,14 @@ const handleGoogleLogin = async (
   session.startTransaction()
 
   const userData = {
-    email: emails[0].value,
-    profile: photos[0].value,
+    email,
+    profile: photos?.[0]?.value || '',
     name: displayName,
     verified: true,
     // password: id,
     status: USER_STATUS.ACTIVE,
     appId: id,
-    role: payload.role,
+    role: USER_ROLES.USER,
   }
 
   try {

@@ -61,9 +61,11 @@ const createAccount = (values: ICreateAccount) => {
 }
 
 const resetPassword = (values: IResetPassword) => {
+  const heading = values.isSetup ? 'Verifica tu email' : 'Restablecer Contraseña'
+  const action = values.isSetup ? 'Verificar email' : 'Restablecer Contraseña'
   return {
     to: values.email,
-    subject: `Restablece tu contraseña, ${values.name}`,
+    subject: values.isSetup ? 'Verifica tu email para crear tu contraseña' : `Restablece tu contraseña, ${values.name}`,
     html: `
       <body style="margin:0; padding:0; background-color:#F9FAFB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB; padding: 40px 0;">
@@ -75,19 +77,19 @@ const resetPassword = (values: IResetPassword) => {
                     <div style="margin-bottom: 24px;">
                        <img src="cid:roadtripeado-logo" alt="Roadtripeado Logo" style="width:140px; height:auto; display:block; margin:0 auto;" />
                     </div>
-                    <h1 style="color:#111827; font-size:28px; font-weight:700; margin:0; line-height: 1.2;">Restablecer Contraseña</h1>
+                    <h1 style="color:#111827; font-size:28px; font-weight:700; margin:0; line-height: 1.2;">${heading}</h1>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding: 0 40px 40px 40px; text-align:center;">
-                    <p style="color:#4B5563; font-size:16px; line-height:1.6; margin:0 0 24px;">Hola ${values.name}, utiliza el código que aparece a continuación para restablecer tu contraseña.</p>
+                    <p style="color:#4B5563; font-size:16px; line-height:1.6; margin:0 0 24px;">Hola ${values.name}, utiliza el código que aparece a continuación para ${values.isSetup ? 'verificar tu email y crear tu contraseña' : 'restablecer tu contraseña'}.</p>
                     <div style="background-color:#F3F4F6; border-radius:12px; padding: 32px; margin-bottom: 32px; border: 1px dashed #D1D5DB;">
-                      <p style="color:#6B7280; font-size:14px; text-transform:uppercase; letter-spacing:1px; font-weight:600; margin:0 0 16px;">Código de Restablecimiento</p>
+                      <p style="color:#6B7280; font-size:14px; text-transform:uppercase; letter-spacing:1px; font-weight:600; margin:0 0 16px;">${values.isSetup ? 'Código de Verificación' : 'Código de Restablecimiento'}</p>
                       <div style="font-size:42px; font-weight:800; color:#FFC107; letter-spacing:8px; margin:0;">${values.otp}</div>
                     </div>
                     <p style="color:#777777; font-size:14px; margin:0 0 32px;">Este código vence en 5 minutos. Si no realizaste esta solicitud, puedes ignorar este correo.</p>
                     <div style="margin-bottom: 32px;">
-                      <a href="${config.clientUrl}/otp-verify?email=${encodeURIComponent(values.email)}&authType=resetPassword" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">Restablecer Contraseña</a>
+                      <a href="${config.clientUrl}/otp-verify?email=${encodeURIComponent(values.email)}&authType=${values.isSetup ? 'setPassword' : 'resetPassword'}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">${action}</a>
                     </div>
                   </td>
                 </tr>
@@ -107,7 +109,7 @@ const resendOtp = (values: {
   email: string
   name: string
   otp: string
-  type: 'resetPassword' | 'createAccount'
+  type: 'resetPassword' | 'createAccount' | 'setPassword'
 }) => {
   const isReset = values.type === 'resetPassword'
   return {
@@ -136,7 +138,7 @@ const resendOtp = (values: {
                     </div>
                     <p style="color:#777777; font-size:14px; margin:0 0 32px;">Este código vence en 5 minutos. Por favor, no compartas este código con nadie.</p>
                     <div style="margin-bottom: 8px;">
-                      <a href="${config.clientUrl}/otp-verify?email=${encodeURIComponent(values.email)}&authType=${isReset ? 'resetPassword' : 'createAccount'}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">${isReset ? 'Restablecer Contraseña' : 'Verificar Ahora'}</a>
+                      <a href="${config.clientUrl}/otp-verify?email=${encodeURIComponent(values.email)}&authType=${values.type}" style="display:inline-block; background-color:#FFC107; color:#000000; padding:16px 40px; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; box-shadow: 0 4px 6px rgba(255, 193, 7, 0.2);">${isReset ? 'Restablecer Contraseña' : 'Verificar Ahora'}</a>
                     </div>
                   </td>
                 </tr>

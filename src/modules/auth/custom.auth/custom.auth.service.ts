@@ -89,7 +89,7 @@ const customLogin = async (payload: ILoginData): Promise<IAuthResponse> => {
     )
   }
 
-  if (!isUserExist.password) {
+  if (!isUserExist.password && isUserExist.provider !== 'guest_purchase') {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'It seems you have signed up using social login. Please use social login to access your account.',
@@ -195,9 +195,10 @@ const forgetPassword = async (email?: string, phone?: string) => {
   // //send otp to user
   if (email) {
     const forgetPasswordEmailTemplate = emailTemplate.resetPassword({
-      name: isUserExist.name as string,
+      name: isUserExist.name || 'viajero',
       email: isUserExist.email as string,
       otp,
+      isSetup: !isUserExist.password,
     })
 
     emailHelper.sendEmail(forgetPasswordEmailTemplate)
@@ -265,14 +266,15 @@ const resetPassword = async (resetToken: string, payload: IResetPassword) => {
     },
   }
 
+  const consumedToken = await Token.findOneAndDelete({ token: resetToken, user: isUserExist._id,
+    expireAt: { $gt: new Date() } })
+  if (!consumedToken) throw new ApiError(StatusCodes.BAD_REQUEST, 'This reset token was already used or expired. Please request a new code.')
+
   await User.findByIdAndUpdate(
     isUserExist._id,
     { $set: updatedUserData },
     { new: true },
   )
-
-  // One-time use
-  await Token.deleteOne({ token: resetToken })
 
   return { message: 'Password reset successfully' }
 }
@@ -319,15 +321,25 @@ const verifyAccount = async (
   }
 
   const currentDate = new Date()
-  if (authentication?.expiresAt! < currentDate) {
+  if (!authentication?.expiresAt || new Date(authentication.expiresAt).getTime() <= currentDate.getTime()) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'OTP has expired, please try again.',
     )
   }
 
+  // Consume the code atomically before any account/login/reset-token action.
+  // A signup verification code must not be replayable as a password-reset code.
+  const consumed = await User.findOneAndUpdate({
+    _id: isUserExist._id,
+    status: { $nin: [USER_STATUS.DELETED] },
+    'authentication.oneTimeCode': authentication.oneTimeCode,
+    'authentication.expiresAt': { $gt: currentDate },
+  }, { $set: { 'authentication.oneTimeCode': '' } }, { new: true })
+  if (!consumed) throw new ApiError(StatusCodes.BAD_REQUEST, 'This code was already used or expired. Please request a new code.')
+
   //either newly created user or existing user
-  if (!isUserExist.verified) {
+  if (!isUserExist.verified && authentication.authType !== 'resetPassword' && !authentication.resetPassword) {
     // If user was invited (has no password), they must set a password first
     if (!isUserExist.password) {
       if (password) {
@@ -468,13 +480,19 @@ const getRefreshToken = async (token: string) => {
       config.jwt.jwt_refresh_secret as string,
     )
 
-    const { userId, role } = decodedToken
+    // Current tokens use authId; retain support for older userId tokens.
+    const userId = decodedToken.authId || decodedToken.userId
+    if (!userId) throw new ApiError(StatusCodes.FORBIDDEN, 'Invalid Refresh Token')
+    const currentUser = await User.findById(userId)
+    if (!currentUser || currentUser.status !== USER_STATUS.ACTIVE) {
+      throw new ApiError(StatusCodes.FORBIDDEN, 'This account is no longer active. Please sign in again.')
+    }
 
     const tokens = AuthHelper.createToken(
       userId,
-      role,
-      decodedToken.name,
-      decodedToken.email,
+      currentUser.role,
+      currentUser.name,
+      currentUser.email,
     )
 
     return {
@@ -581,7 +599,7 @@ const resendOtpToPhoneOrEmail = async (
       email: isUserExist.email as string,
       name: isUserExist.name as string,
       otp,
-      type: authType,
+      type: authType === 'resetPassword' && !isUserExist.password ? 'setPassword' : authType,
     })
     // emailQueue.add('emails', forgetPasswordEmailTemplate)
 

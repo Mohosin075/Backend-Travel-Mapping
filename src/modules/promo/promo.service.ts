@@ -12,11 +12,26 @@ import { PromoLink } from './promo.model'
 import { IPromoLink } from './promo.interface'
 import { io } from '../../server'
 import { localizeField } from '../../helpers/localize'
+import { USER_STATUS } from '../../enum/user'
+import { PaymentServices } from '../payment/payment.service'
+
+const validatePromoUser = (user: any, recipientEmail?: string | null) => {
+  if (!user || user.status !== USER_STATUS.ACTIVE) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'This account is not available. Please sign in with an active account.')
+  }
+  if (recipientEmail) {
+    if (user.email?.trim().toLowerCase() !== recipientEmail.trim().toLowerCase()) {
+      throw new ApiError(StatusCodes.FORBIDDEN, `This invitation is specifically reserved for ${recipientEmail}. Please sign in with that email.`)
+    }
+    if (!user.verified) throw new ApiError(StatusCodes.FORBIDDEN, 'Please verify your email before using this invitation.')
+  }
+}
 
 const verifyPromoCode = async (
   code: string,
   userMapId?: string,
 ): Promise<IPromoLink & { mapName?: string }> => {
+  if (userMapId && !Types.ObjectId.isValid(userMapId)) throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid map ID')
   const promoLink = await PromoLink.findOne({ code })
   if (!promoLink) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Promo link not found')
@@ -62,15 +77,7 @@ const claimFreePromo = async (
     throw new ApiError(StatusCodes.NOT_FOUND, 'User not found')
   }
 
-  if (
-    promoDetails.recipientEmail &&
-    user.email?.toLowerCase() !== promoDetails.recipientEmail.toLowerCase()
-  ) {
-    throw new ApiError(
-      StatusCodes.FORBIDDEN,
-      `This invitation is specifically reserved for ${promoDetails.recipientEmail}. You are logged in as ${user.email || ''}.`,
-    )
-  }
+  validatePromoUser(user, promoDetails.recipientEmail)
 
   if (promoDetails.price > 0) {
     throw new ApiError(
@@ -92,33 +99,31 @@ const claimFreePromo = async (
   if (!map) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Selected map not found')
   }
-
-  // Atomic update to prevent double-claiming
-  const updatedPromo = await PromoLink.findOneAndUpdate(
-    {
-      code,
-      isUsed: false,
-      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-    },
-    {
-      isUsed: true,
-      usedBy: new Types.ObjectId(userId),
-      usedAt: new Date(),
-    },
-    { new: true },
-  )
-
-  if (!updatedPromo) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      'Promo link was already claimed, expired, or invalid',
-    )
+  if (!promoDetails.mapId && (map.status !== 'Published' || !map.isActive || !map.isPaid)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Please select an available premium map.')
+  }
+  if (user.purchasedMaps?.some(id => String(id) === String(mapId))) {
+    throw new ApiError(StatusCodes.CONFLICT, 'You already own this map.')
   }
 
-  // Grant map access
-  await User.findByIdAndUpdate(userId, {
-    $addToSet: { purchasedMaps: mapId },
-  })
+  const session = await PromoLink.startSession()
+  try {
+    await session.withTransaction(async () => {
+      // Claim and entitlement must commit together; failed access grants can retry.
+      const updatedPromo = await PromoLink.findOneAndUpdate(
+        { code, isUsed: false, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] },
+        { isUsed: true, usedBy: new Types.ObjectId(userId), usedAt: new Date() },
+        { new: true, session },
+      )
+      if (!updatedPromo) {
+        throw new ApiError(StatusCodes.BAD_REQUEST, 'Promo link was already claimed, expired, or invalid')
+      }
+      const updatedUser = await User.findOneAndUpdate({ _id: userId, status: USER_STATUS.ACTIVE }, {
+        $addToSet: { purchasedMaps: mapId },
+      }, { session, new: true })
+      if (!updatedUser) throw new ApiError(StatusCodes.CONFLICT, 'Account changed while claiming. Please try again.')
+    })
+  } finally { await session.endSession() }
 
   return {
     success: true,
@@ -132,17 +137,8 @@ const createPromoCheckoutSession = async (
   userMapId?: string,
 ): Promise<{ sessionId: string; url: string }> => {
   const promoDetails = await verifyPromoCode(code, userMapId)
-
-  if (
-    promoDetails.recipientEmail &&
-    user.email &&
-    user.email.toLowerCase() !== promoDetails.recipientEmail.toLowerCase()
-  ) {
-    throw new ApiError(
-      StatusCodes.FORBIDDEN,
-      `This invitation is specifically reserved for ${promoDetails.recipientEmail}. You are logged in as ${user.email}.`,
-    )
-  }
+  const buyer = await User.findById(user.authId)
+  validatePromoUser(buyer, promoDetails.recipientEmail)
 
   if (promoDetails.price <= 0) {
     throw new ApiError(
@@ -164,11 +160,48 @@ const createPromoCheckoutSession = async (
   if (!map) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Selected map not found')
   }
+  if (!promoDetails.mapId && (map.status !== 'Published' || !map.isActive || !map.isPaid)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Please select an available premium map.')
+  }
+  if (buyer!.purchasedMaps?.some(id => String(id) === String(mapId))) {
+    throw new ApiError(StatusCodes.CONFLICT, 'You already own this map.')
+  }
 
   const amount = promoDetails.price
   const currency = 'usd'
+  await Payment.init()
+  const now = new Date()
+  // A single-use promo must not create parallel chargeable sessions for
+  // different accounts/maps. The same account resumes its existing checkout.
+  if (promoDetails.checkoutSessionId) {
+    const previous = await stripe.checkout.sessions.retrieve(promoDetails.checkoutSessionId)
+    if (previous.payment_status === 'paid') {
+      await PaymentServices.verifyCheckoutSession(previous.id)
+      throw new ApiError(StatusCodes.CONFLICT, 'This invitation has already been paid. Open your purchased maps.')
+    }
+    if (promoDetails.checkoutExpiresAt && promoDetails.checkoutExpiresAt <= now && previous.status === 'open') {
+      await stripe.checkout.sessions.expire(previous.id)
+    }
+  }
+  let reservation: IPromoLink | null = await PromoLink.findOneAndUpdate({ code, isUsed: false,
+    $and: [
+      { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
+      { $or: [{ checkoutReservationId: null }, { checkoutExpiresAt: { $lte: now } }] },
+    ],
+  }, { $set: { checkoutReservationId: crypto.randomBytes(16).toString('hex'),
+    checkoutUserId: buyer!._id, checkoutMapId: mapId,
+    checkoutExpiresAt: new Date(Math.floor(Date.now() / 1000) * 1000 + 23 * 60 * 60 * 1000) },
+    $unset: { checkoutSessionId: 1 } }, { new: true }).lean<IPromoLink>()
+  if (!reservation) reservation = await PromoLink.findOne({ code, isUsed: false,
+    checkoutUserId: buyer!._id, checkoutMapId: mapId, checkoutExpiresAt: { $gt: now } }).lean<IPromoLink>()
+  if (!reservation) throw new ApiError(StatusCodes.CONFLICT, 'This invitation is already in checkout. Please retry after the current checkout expires.')
+  if (reservation.checkoutSessionId) {
+    const previous = await stripe.checkout.sessions.retrieve(reservation.checkoutSessionId)
+    return { sessionId: previous.id, url: previous.url || `${config.clientUrl}/claim-promo?code=${encodeURIComponent(code)}&success=true&session_id=${previous.id}` }
+  }
 
   const session = await stripe.checkout.sessions.create({
+    expires_at: Math.floor(reservation.checkoutExpiresAt!.getTime() / 1000),
     payment_method_types: ['card'],
     line_items: [
       {
@@ -184,21 +217,22 @@ const createPromoCheckoutSession = async (
       },
     ],
     mode: 'payment',
-    success_url: `${config.clientUrl}/claim-promo?code=${code}&success=true`,
-    cancel_url: `${config.clientUrl}/claim-promo?code=${code}&cancelled=true`,
-    customer_email: user.email,
+    success_url: `${config.clientUrl}/claim-promo?code=${encodeURIComponent(code)}&success=true&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${config.clientUrl}/claim-promo?code=${encodeURIComponent(code)}&mapId=${mapId}&cancelled=true`,
+    customer_email: buyer!.email,
     metadata: {
       type: 'promo_payment',
       promoCode: code,
       userId: user.authId.toString(),
       mapId: mapId.toString(),
     },
-  })
+  }, { idempotencyKey: `promo-${reservation.checkoutReservationId}` })
 
-  await Payment.create({
+  await Payment.updateOne({ promoCheckoutKey: reservation.checkoutReservationId }, { $setOnInsert: {
+    promoCheckoutKey: reservation.checkoutReservationId!,
     userId: user.authId,
     mapId: mapId,
-    userEmail: user.email,
+    userEmail: buyer!.email,
     amount,
     currency: currency.toUpperCase(),
     paymentMethod: 'stripe',
@@ -210,12 +244,28 @@ const createPromoCheckoutSession = async (
       checkoutSessionId: session.id,
       mapId: mapId.toString(),
     },
+  } }, { upsert: true }).catch(async (error: any) => {
+    if (error.code !== 11000 || !await Payment.findOne({ promoCheckoutKey: reservation!.checkoutReservationId })) throw error
   })
+  await PromoLink.updateOne({ code, checkoutReservationId: reservation.checkoutReservationId }, { $set: { checkoutSessionId: session.id } })
 
   return {
     sessionId: session.id,
     url: session.url!,
   }
+}
+
+const verifyPromoPayment = async (userId: string, code: string, sessionId?: string) => {
+  validatePromoUser(await User.findById(userId))
+  const query: any = { userId, 'metadata.promoCode': code, status: { $ne: 'refunded' } }
+  if (sessionId) query['metadata.checkoutSessionId'] = sessionId
+  const payment = await Payment.findOne(query).sort({ createdAt: -1 })
+  if (!payment) throw new ApiError(StatusCodes.NOT_FOUND, 'No payment found for this invitation and account.')
+  const checkoutId = payment.metadata?.checkoutSessionId
+  if (!checkoutId) throw new ApiError(StatusCodes.BAD_REQUEST, 'Checkout reference is missing. Please contact support.')
+  const result = await PaymentServices.verifyCheckoutSession(checkoutId)
+  if (result.status !== 'succeeded') throw new ApiError(StatusCodes.BAD_REQUEST, 'Payment has not completed. Please retry verification after payment.')
+  return { mapId: String(payment.mapId) }
 }
 
 const bulkGeneratePromoLinks = async (payload: {
@@ -508,6 +558,7 @@ const getPromoStats = async (): Promise<any> => {
 }
 
 export const PromoServices = {
+  verifyPromoPayment,
   verifyPromoCode,
   claimFreePromo,
   createPromoCheckoutSession,

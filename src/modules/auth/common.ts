@@ -19,55 +19,6 @@ const handleLoginLogic = async (
 
   const { restrictionLeftAt, wrongLoginAttempts } = authentication
 
-  if (!verified) {
-    //send otp to user
-    const isInviteAccept = !password
-    const otp = generateOtp()
-    const otpExpiresIn = new Date(
-      Date.now() + (isInviteAccept ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000),
-    )
-
-    const authentication = {
-      email: payload.email,
-      oneTimeCode: otp,
-      expiresAt: otpExpiresIn,
-      latestRequestAt: new Date(),
-      authType: 'createAccount' as const,
-    }
-
-    await User.findByIdAndUpdate(isUserExist._id, {
-      $set: {
-        authentication,
-      },
-    })
-
-    if (isInviteAccept) {
-      const invitationEmail = emailTemplate.userInvitation({
-        email: isUserExist.email as string,
-        role: (isUserExist.role as string) || 'user',
-        otp,
-      })
-      emailHelper.sendEmail(invitationEmail)
-    } else {
-      const otpTemplate = emailTemplate.createAccount({
-        name: isUserExist.name || 'there',
-        email: isUserExist.email!,
-        otp,
-      })
-      emailHelper.sendEmail(otpTemplate)
-    }
-
-    return authResponse(
-      StatusCodes.OK,
-      `An OTP has been sent to your ${payload.email}. Please verify.`,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      isInviteAccept, // needPassword — invited users must set a password
-    )
-  }
-
   if (status === USER_STATUS.DELETED) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
@@ -96,7 +47,20 @@ const handleLoginLogic = async (
     })
   }
 
-  const isPasswordMatched = await User.isPasswordMatched(
+  if (!password && isUserExist.provider === 'guest_purchase') {
+    return {
+      status: StatusCodes.OK,
+      message: "You haven't set a password yet. Verify your email to set one.",
+      passwordSetupRequired: true,
+    }
+  }
+  if (!password && verified) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'This account has no password. Continue with Google or verify your email to set a password.')
+  }
+
+  // Existing password accounts must prove their password before receiving a
+  // signup verification redirect. Passwordless invitations keep their OTP flow.
+  const isPasswordMatched = !password || await User.isPasswordMatched(
     payload.password,
     password,
   )
@@ -125,6 +89,22 @@ const handleLoginLogic = async (
       StatusCodes.BAD_REQUEST,
       'Incorrect password, please try again.',
     )
+  }
+
+  if (!verified) {
+    const isInviteAccept = !password
+    const otp = generateOtp()
+    const otpExpiresIn = new Date(Date.now() + (isInviteAccept ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000))
+    await User.findByIdAndUpdate(isUserExist._id, { $set: { authentication: {
+      email: isUserExist.email, oneTimeCode: otp, expiresAt: otpExpiresIn,
+      latestRequestAt: new Date(), authType: 'createAccount',
+    } } })
+    const template = isInviteAccept
+      ? emailTemplate.userInvitation({ email: isUserExist.email!, role: isUserExist.role || 'user', otp })
+      : emailTemplate.createAccount({ name: isUserExist.name || 'there', email: isUserExist.email!, otp })
+    emailHelper.sendEmail(template)
+    return authResponse(StatusCodes.OK, `An OTP has been sent to your ${isUserExist.email}. Please verify.`,
+      undefined, undefined, undefined, undefined, isInviteAccept)
   }
 
   await User.findByIdAndUpdate(

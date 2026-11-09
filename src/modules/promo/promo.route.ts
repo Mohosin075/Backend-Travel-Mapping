@@ -9,6 +9,10 @@ const router = express.Router()
 
 router.get('/verify', PromoControllers.verifyPromoCode)
 
+router.post('/verify-payment',
+  auth(USER_ROLES.USER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  validateRequest(PromoValidations.verifyPayment), PromoControllers.verifyPromoPayment)
+
 router.post(
   '/claim',
   auth(USER_ROLES.USER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),

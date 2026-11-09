@@ -22,4 +22,5 @@ export type ILoginResponse = {
   nextStep?: string
   role?: string
   needPassword?: boolean
+  passwordSetupRequired?: boolean
 }

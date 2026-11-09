@@ -29,4 +29,5 @@ export type IAuthResponse = {
   accessToken?: string
   refreshToken?: string
   needPassword?: boolean
+  passwordSetupRequired?: boolean
 }

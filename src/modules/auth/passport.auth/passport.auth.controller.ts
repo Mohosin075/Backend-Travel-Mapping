@@ -13,16 +13,17 @@ const login = catchAsync(async (req: Request, res: Response) => {
   const { deviceToken, password } = req.body
 
   const result = await AuthCommonServices.handleLoginLogic(
-    { deviceToken: deviceToken, password: password },
+    { deviceToken, password, email: (user as IUser).email, rememberMe: req.body.rememberMe },
     user as IUser,
   )
-  const { status, message, accessToken, refreshToken, role, needPassword } =
+  const { status, message, accessToken, refreshToken, role, needPassword, passwordSetupRequired } =
     result
 
   if (refreshToken) {
     res.cookie('refreshToken', refreshToken, {
       secure: config.node_env === 'production',
       httpOnly: true,
+      sameSite: config.node_env === 'production' ? 'none' : 'lax',
     })
   }
 
@@ -30,7 +31,7 @@ const login = catchAsync(async (req: Request, res: Response) => {
     statusCode: status,
     success: true,
     message: message,
-    data: { accessToken, refreshToken, role, needPassword },
+    data: { accessToken, refreshToken, role, needPassword, passwordSetupRequired },
   })
 })
 
@@ -55,7 +56,7 @@ const googleAuthCallback = catchAsync(async (req: Request, res: Response) => {
   if (req.query.state) {
     try {
       const decodedRedirect = Buffer.from(req.query.state as string, 'base64').toString('ascii')
-      if (decodedRedirect.startsWith('/')) {
+      if (decodedRedirect.startsWith('/') && !decodedRedirect.startsWith('//') && !decodedRedirect.includes('\\')) {
         redirectUrl += `&redirect=${encodeURIComponent(decodedRedirect)}`
       }
     } catch (e) {

@@ -13,6 +13,7 @@ function fixture(price=35) {
  const calls={payments:[],checkouts:[],intents:[]};
  const {localizeField}=load('src/helpers/localize.ts');
  const mocks={
+  '../user/user.model':{User:{findById:async()=>({purchasedMaps:[]})}},
   '../map/map.model':{Map:{findById:async()=>({isPaid:true,price,name:{es:'Puerto Rico',en:'Puerto Rico'},description:{es:'Mapa de viaje',en:'Travel map'}})}},
   './payment.model':{Payment:{create:async p=>calls.payments.push(p)}},
   '../../helpers/localize':{localizeField},

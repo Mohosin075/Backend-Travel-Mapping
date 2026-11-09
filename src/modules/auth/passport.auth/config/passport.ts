@@ -18,7 +18,7 @@ passport.use(
     async (req, email, password, done) => {
       try {
         const isUserExist = await User.findOne({
-          email,
+          email: email.trim().toLowerCase(),
           status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE] },
         })
           .select('+password +authentication')

@@ -12,18 +12,19 @@ const customLogin = catchAsync(async (req: Request, res: Response) => {
 
 
   const result = await CustomAuthServices.customLogin(loginData)
-  const { status, message, accessToken, refreshToken, role } = result
+  const { status, message, accessToken, refreshToken, role, passwordSetupRequired } = result
 
-  res.cookie('refreshToken', refreshToken, {
+  if (refreshToken) res.cookie('refreshToken', refreshToken, {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   })
 
   sendResponse(res, {
     statusCode: status,
     success: true,
     message: message,
-    data: { accessToken, refreshToken, role },
+    data: { accessToken, refreshToken, role, passwordSetupRequired },
   })
 })
 
@@ -33,9 +34,10 @@ const adminLogin = catchAsync(async (req: Request, res: Response) => {
   const result = await CustomAuthServices.adminLogin(loginData)
   const { status, message, accessToken, refreshToken, role } = result
 
-  res.cookie('refreshToken', refreshToken, {
+  if (refreshToken) res.cookie('refreshToken', refreshToken, {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   })
 
   sendResponse(res, {
@@ -97,6 +99,7 @@ const verifyAccount = catchAsync(async (req: Request, res: Response) => {
     res.cookie('refreshToken', refreshToken, {
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     })
   }
 
@@ -179,9 +182,10 @@ const socialLogin = catchAsync(async (req: Request, res: Response) => {
   const result = await CustomAuthServices.socialLogin(appId, deviceToken)
   const { status, message, accessToken, refreshToken, role } = result
 
-  res.cookie('refreshToken', refreshToken, {
+  if (refreshToken) res.cookie('refreshToken', refreshToken, {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   })
 
   sendResponse(res, {
@@ -196,7 +200,8 @@ const logout = catchAsync(async (req: Request, res: Response) => {
   const userId = (req.user as JwtPayload).authId
   const result = await TokenServices.logout(userId)
 
-  res.clearCookie('refreshToken')
+  res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', path: '/' })
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

@@ -4,8 +4,13 @@ import { PaymentValidations } from './payment.validation'
 import validateRequest from '../../middleware/validateRequest'
 import auth from '../../middleware/auth'
 import { USER_ROLES } from '../../enum/user'
+import { authRateLimiter } from '../../middleware/rateLimit'
+import { GuestCheckoutController } from './guest-checkout.controller'
 
 const router = express.Router()
+
+router.post('/guest/start', authRateLimiter, GuestCheckoutController.start)
+router.post('/guest/complete', authRateLimiter, GuestCheckoutController.complete)
 
 router.get(
   '/',

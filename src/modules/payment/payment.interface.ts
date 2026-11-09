@@ -16,6 +16,8 @@ export interface IPayment {
   currency: string
   paymentMethod: 'stripe' | 'paypal' | 'bank_transfer'
   paymentIntentId: string
+  guestCheckoutKey?: string
+  promoCheckoutKey?: string
   status: 'pending' | 'succeeded' | 'failed' | 'refunded'
   refundAmount?: number
   refundReason?: string
