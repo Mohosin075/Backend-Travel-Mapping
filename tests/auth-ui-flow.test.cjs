@@ -15,6 +15,13 @@ function nodes(tree) {
 function ui(file, options = {}) {
   const state = { auth: { accessToken: options.accessToken || null, user: options.user || null } };
   const params = new URLSearchParams(options.params || {});
+  let searchString = params.toString(), searchSnapshot = new URLSearchParams(searchString);
+  const useSearchParams = () => {
+    if (searchString !== params.toString()) {
+      searchString = params.toString(); searchSnapshot = new URLSearchParams(searchString);
+    }
+    return searchSnapshot;
+  };
   const storage = new Map(options.storage || []);
   const hooks = [], dependencies = [], effects = [], routes = [], actions = [], calls = {};
   let cursor = 0, Component;
@@ -53,14 +60,15 @@ function ui(file, options = {}) {
     'react-redux': { useDispatch: () => dispatch },
     'react-hook-form': { useForm: () => ({ register: name => ({ name }), handleSubmit: fn => fn, setValue() {}, watch: name => options.params?.[name] || '', formState: { errors: {} } }) },
     '@hookform/resolvers/zod': { zodResolver: () => ({}) },
-    'next/link': 'a', 'next/navigation': { useSearchParams: () => params, useRouter: () => router },
+    'next/link': 'a', 'next/navigation': { useSearchParams, useRouter: () => router },
     'next-themes': { useTheme: () => ({ resolvedTheme: 'light' }) },
     '@vis.gl/react-google-maps': { APIProvider: 'provider', Map: 'map', MapControl: 'control', ControlPosition: {}, useMapsLibrary: () => undefined },
     './MapFilters': { MapFilters: 'filters', SelectedMapFilter: 'selected-filter' },
-    '@/lib/record-visit': { trackUsage() {}, normalizePinType: value => value },
+    '@/lib/record-visit': { trackUsage: (...args) => (calls.tracking ||= []).push(args), normalizePinType: value => value },
+    '@/lib/editor-access': { editorCanAccessMap: () => false },
     '@/redux/features/category/categoryApi': { useGetCategoriesQuery: () => ({ data: { data: [] }, isSuccess: true }) },
     '@/redux/features/visited/visitedApi': { useGetMyVisitedPlacesQuery: () => ({ data: { data: [] } }) },
-    '@/redux/features/public/publicApi': { useGetPublicPlacesBusinessQuery: args => { (calls.discovery ||= []).push(args); return { currentData: { data: [] }, isSuccess: true }; } },
+    '@/redux/features/public/publicApi': { useGetPublicPlacesBusinessQuery: (args, config) => { if (!config?.skip) (calls.discovery ||= []).push(args); return { currentData: { data: [] }, isSuccess: true }; } },
     'lucide-react': new Proxy({}, { get: () => 'icon' }),
     'motion/react': { motion: new Proxy({}, { get: (_, name) => name }) },
     sonner: { toast: { success() {}, error() {}, loading() {} } },
@@ -78,7 +86,7 @@ function ui(file, options = {}) {
       useVerifyPromoCodeQuery: () => ({ data: options.promo ? { data: options.promo } : undefined, isLoading: false, isError: false, refetch() {} }) },
     '@/redux/features/user/userApi': {
       userApi: { util: { updateQueryData: (endpoint, args, update) => ({ type: 'updateProfileCache', update }) } },
-      useGetProfileQuery: () => ({ data: options.profile, isFetching: false, refetch: () => ({ unwrap: async () => {
+      useGetProfileQuery: () => ({ data: options.profile, isFetching: Boolean(options.profileLoading), isLoading: Boolean(options.profileLoading), isError: Boolean(options.profileError), refetch: () => ({ unwrap: async () => {
         (calls.refetchProfile ||= []).push(true);
         return options.profileResponses?.shift() || options.profile;
       } }) }),
@@ -102,12 +110,104 @@ function ui(file, options = {}) {
     if (inner) tree = inner.type();
     return tree;
   };
-  return { render, routes, calls, actions, storage, params, timers() { for (const fn of timers.splice(0)) fn(); }, async effects() {
+  return { render, routes, calls, actions, storage, params, state, timers() { for (const fn of timers.splice(0)) fn(); }, async effects() {
     for (const fn of effects.splice(0)) fn();
     await new Promise(resolve => setImmediate(resolve));
   } };
 }
 const find = (tree, type) => nodes(tree).find(node => node.type === type);
+
+for (const target of [mapId, 'New Map', 'Missing Map']) {
+  test(`View-on-map target ${target} never loads the previously owned map while checking access`, async () => {
+    const oldMap = 'a'.repeat(24);
+    const f = ui('components/Common/maps/map.tsx', { accessToken: 'token', profile: { purchasedMaps: [oldMap] },
+      maps: [{ _id: oldMap, name: 'Puerto Rico' }, { _id: mapId, name: 'New Map' }],
+      storage: [['selectedMapId', oldMap], ['selectedCountryFilter', 'Puerto Rico']] });
+    f.render(); await f.effects(); assert.ok(find(f.render(), 'provider')); await f.effects();
+    f.params.set('focus', 'c'.repeat(24)); f.params.set('map', target);
+    f.calls.discovery.length = 0; f.calls.tracking.length = 0;
+    assert.equal(find(f.render(), 'provider'), undefined, 'cached route checks target before effects');
+    await f.effects();
+    f.params.delete('focus'); f.params.delete('map');
+    assert.equal(find(f.render(), 'provider'), undefined, 'still blocked after URL consumption');
+    await f.effects();
+    assert.equal(f.calls.discovery.length, 0);
+    assert.equal(f.calls.tracking.length, 0);
+  });
+}
+
+test('View-on-map opens a purchased target and retains it after consuming the URL', async () => {
+  const oldMap = 'a'.repeat(24);
+  const f = ui('components/Common/maps/map.tsx', { accessToken: 'token', profile: { purchasedMaps: [mapId] },
+    params: { focus: 'c'.repeat(24), map: 'New Map' }, maps: [{ _id: oldMap, name: 'Puerto Rico' }, { _id: mapId, name: 'New Map' }],
+    storage: [['selectedMapId', oldMap], ['selectedCountryFilter', 'Puerto Rico']] });
+  f.render(); await f.effects();
+  assert.ok(find(f.render(), 'provider'));
+  assert.equal(f.calls.discovery.at(-1).map, mapId);
+  await f.effects(); f.params.delete('focus'); f.params.delete('map');
+  assert.ok(find(f.render(), 'provider'));
+  assert.equal(f.calls.discovery.at(-1).map, mapId);
+});
+
+test('profile loading, successful resolution and entitlement removal never show an unauthorized map', async () => {
+  const options = { accessToken: 'token', profileLoading: true, params: { mapId } };
+  const f = ui('components/Common/maps/map.tsx', options);
+  f.render(); await f.effects(); assert.equal(find(f.render(), 'provider'), undefined);
+  options.profileLoading = false; options.profile = { purchasedMaps: [mapId] };
+  assert.ok(find(f.render(), 'provider'));
+  options.profile = { purchasedMaps: [] };
+  assert.equal(find(f.render(), 'provider'), undefined);
+  options.profile = { purchasedMaps: [mapId] };
+  assert.ok(find(f.render(), 'provider'));
+  f.state.auth.accessToken = null;
+  assert.equal(find(f.render(), 'provider'), undefined, 'logout unmounts even with cached entitlements');
+});
+
+for (const scenario of [
+  { name: 'guest', allowed: false },
+  { name: 'stale cached profile after logout', profile: { purchasedMaps: [mapId] }, allowed: false },
+  { name: 'unpaid account', accessToken: 'token', profile: { role: 'user', purchasedMaps: [] }, allowed: false },
+  { name: 'another map owner', accessToken: 'token', profile: { purchasedMaps: ['a'.repeat(24)] }, allowed: false },
+  { name: 'profile loading', accessToken: 'token', profileLoading: true, allowed: false },
+  { name: 'profile error', accessToken: 'token', profileError: true, allowed: false },
+  { name: 'owner', accessToken: 'token', profile: { purchasedMaps: [mapId] }, allowed: true },
+  { name: 'populated owner', accessToken: 'token', profile: { purchasedMaps: [{ _id: mapId }] }, allowed: true },
+  ...['admin', 'super_admin', 'map_editor'].map(role => ({ name: role, accessToken: 'token', profile: { role, purchasedMaps: [] }, allowed: true })),
+]) {
+  test(`explorer gates Google Maps and discovery for ${scenario.name}`, async () => {
+    const f = ui('components/Common/maps/map.tsx', { ...scenario, params: { mapId } });
+    assert.equal(find(f.render(), 'provider'), undefined, 'no map before hydration');
+    await f.effects();
+    const tree = f.render(); await f.effects();
+    assert.equal(Boolean(find(tree, 'provider')), scenario.allowed);
+    assert.equal(Boolean(find(tree, 'map')), scenario.allowed);
+    assert.equal(Boolean(f.calls.discovery?.length), scenario.allowed);
+    assert.equal(Boolean(f.calls.tracking?.length), scenario.allowed);
+  });
+}
+
+test('switching to an unpurchased map unmounts Google Maps; returning to an owned map restores it', async () => {
+  const oldMap = 'a'.repeat(24);
+  const f = ui('components/Common/maps/map.tsx', { accessToken: 'token', profile: { purchasedMaps: [mapId] }, params: { mapId },
+    maps: [{ _id: mapId, name: 'New Map' }, { _id: oldMap, name: 'Puerto Rico' }] });
+  f.render(); await f.effects();
+  assert.ok(find(f.render(), 'provider'));
+  f.params.set('mapId', oldMap);
+  assert.equal(find(f.render(), 'provider'), undefined);
+  await f.effects(); f.params.delete('mapId');
+  const tree = f.render(); await f.effects();
+  find(tree, 'select').props.onChange({ target: { value: mapId } });
+  assert.ok(find(f.render(), 'provider'));
+});
+
+test('confirmed promo entitlement unlocks the explorer without logging in again', async () => {
+  const options = { accessToken: 'token', profile: { role: 'user', purchasedMaps: [] }, params: { mapId } };
+  const f = ui('components/Common/maps/map.tsx', options);
+  f.render(); await f.effects();
+  assert.equal(find(f.render(), 'provider'), undefined);
+  options.profile = { ...options.profile, purchasedMaps: [mapId] };
+  assert.ok(find(f.render(), 'provider'));
+});
 
 for (const outsideCatalogue of [false, true]) {
   test(`cached map page switches from Puerto Rico to promo map${outsideCatalogue ? ' outside first catalogue page' : ''}`, async () => {
