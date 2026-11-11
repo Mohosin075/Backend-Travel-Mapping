@@ -66,7 +66,7 @@ function ui(file, options = {}) {
     '@hookform/resolvers/zod': { zodResolver: () => ({}) },
     'next/link': 'a', 'next/navigation': { useSearchParams, useRouter: () => router, useParams: () => ({ id: mapId }) },
     '@/components/shared/login-required-modal': { useLoginRequired: () => ({ openLoginRequired: path => (calls.loginRequired ||= []).push(path) }) },
-    '@/redux/features/award/awardApi': { useGetAwardsQuery: () => ({ data: { data: options.awards || [] } }), useRedeemFreeMapMutation: mutation('useRedeemFreeMapMutation') },
+    '@/redux/features/award/awardApi': { useGetAwardsQuery: () => ({ data: { data: options.awards || [] }, isLoading: Boolean(options.awardsLoading) }), useRedeemFreeMapMutation: mutation('useRedeemFreeMapMutation') },
     'next-themes': { useTheme: () => ({ resolvedTheme: 'light' }) },
     '@vis.gl/react-google-maps': { APIProvider: 'provider', Map: 'map', MapControl: 'control', ControlPosition: {}, useMapsLibrary: () => undefined },
     './MapFilters': { MapFilters: 'filters', SelectedMapFilter: 'selected-filter' },
@@ -79,7 +79,7 @@ function ui(file, options = {}) {
     'motion/react': { motion: new Proxy({}, { get: (_, name) => name }) },
     sonner: { toast: { success() {}, error() {}, loading() {}, info() {} } },
     '@/lib/i18n/LanguageContext': { useLanguage: () => ({ language: 'en', t: key => key }) },
-    '@/lib/utils': { decodeJwtPayload: () => ({ authId: 'user', email: 'buyer@example.test', role: 'user' }), getLocalized: value => typeof value === 'string' ? value : value?.en || '', getApiErrorMessage: err => err.message },
+    '@/lib/utils': { decodeJwtPayload: () => ({ authId: 'user', email: 'buyer@example.test', role: 'user' }), getImageUrl: value => value || '', getLocalized: value => typeof value === 'string' ? value : value?.en || '', getApiErrorMessage: err => err.message },
     '@/lib/roles': { isDashboardRole: role => role === 'admin' },
     '@/redux/hook': { useAppDispatch: () => dispatch, useAppSelector: fn => fn(state) },
     '@/redux/store': { persistor: { flush: async () => actions.push({ type: 'flushed' }) } },
@@ -87,7 +87,9 @@ function ui(file, options = {}) {
     '@/redux/api/baseApi': { baseApi: { util: { resetApiState: () => ({ type: 'resetCache' }), invalidateTags: () => ({ type: 'invalidate' }) } } },
     '@/redux/features/auth/authApi': authApi,
     '@/components/shared/cross-tab-logout-listener': { broadcastLogout: () => actions.push({ type: 'broadcastLogout' }) },
-    '@/redux/features/payment/paymentApi': authApi,
+    '@/redux/features/payment/paymentApi': new Proxy({}, { get: (_, name) => name === 'useVerifyCheckoutSessionQuery'
+      ? () => ({ data: options.verifiedPayment, error: options.verificationError, isLoading: false,
+        refetch: () => { (calls.retryVerification ||= []).push(true); } }) : mutation(name) }),
     '@/redux/features/promo/promoApi': { ...Object.fromEntries(['useClaimFreePromoMutation', 'useCreatePromoCheckoutSessionMutation', 'useVerifyPromoPaymentMutation'].map(name => [name, mutation(name)])),
       useVerifyPromoCodeQuery: () => ({ data: options.promo ? { data: options.promo } : undefined, isLoading: false, isError: Boolean(options.promoError), error: options.promoError, refetch() {} }) },
     '@/redux/features/user/userApi': {
@@ -100,19 +102,25 @@ function ui(file, options = {}) {
     '@/redux/features/map/mapApi': { useGetMapByIdQuery: () => ({ data: { data: options.mapDetail || { _id: mapId, name: 'New Map', isPaid: true } }, isLoading: false }),
       useGetMapsQuery: () => ({ data: { data: options.maps || [{ _id: mapId, name: 'New Map', isPaid: true }], meta: { totalPage: 1 } }, isFetching: false, isSuccess: true }) },
   };
-  const module = { exports: {} };
-  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(frontendRoot, file), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
-  }).outputText, { module, exports: module.exports, require: name => imports[name] ||
-    (/ui\/(button|input|label|checkbox)/.test(name) ? { Button: 'button', Input: 'input', Label: 'label', Checkbox: 'checkbox' } : name === 'zod' ? require('zod') : {}),
+  const runtime = { require: name => imports[name] ||
+    (name === '@/hooks/use-map-purchase' ? execute('hooks/use-map-purchase.ts') :
+      /ui\/(button|input|label|checkbox)/.test(name) ? { Button: 'button', Input: 'input', Label: 'label', Checkbox: 'checkbox' } : name === 'zod' ? require('zod') : {}),
     console, URLSearchParams, process: { env: {} }, crypto: crypto.webcrypto, localStorage: storageApi, sessionStorage: storageApi,
     window: { innerWidth: 1200, addEventListener() {}, removeEventListener() {}, location: { origin: 'https://example.test', pathname: `/catalog/${mapId}`, search: '', assign: path => routes.push(path), set href(path) { routes.push(path); } } }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
-  });
+  };
+  const execute = relativeFile => {
+    const module = { exports: {} };
+    vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(frontendRoot, relativeFile), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+    }).outputText, { ...runtime, module, exports: module.exports });
+    return module.exports;
+  };
+  const module = { exports: execute(file) };
   Component = module.exports.default || module.exports[options.exportName];
   const render = () => {
     cursor = 0;
     let tree = Component(options.props);
-    const inner = nodes(tree).find(node => typeof node.type === 'function' && node.type.name === 'ClaimPromoContent');
+    const inner = nodes(tree).find(node => typeof node.type === 'function' && ['ClaimPromoContent', 'FeaturedMapsInner'].includes(node.type.name));
     if (inner) tree = inner.type();
     return tree;
   };
@@ -314,12 +322,15 @@ test('Google login retains selected promo destination and clears previous user c
   assert.equal(f.routes[0], '/claim-promo?code=PROMO');
   assert.ok(f.actions.some(action => action.type === 'resetCache'));
 });
-test('guest Buy Now opens the login/register modal for the same map without starting payment', async () => {
+test('guest Buy Now opens registration for the same map without starting payment', async () => {
   const f = ui('components/Common/maps/feature-map-detail.tsx');
   await find(f.render(), 'button').props.onClick();
-  assert.deepEqual(f.calls.loginRequired, [`/catalog/${mapId}`]);
+  const target = new URL(f.routes[0], 'https://example.test');
+  assert.equal(target.pathname, '/register');
+  assert.equal(target.searchParams.get('redirect'), `/catalog/checkout?mapId=${mapId}&resume=1`);
+  assert.equal(f.calls.loginRequired, undefined);
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
-  assert.equal(f.routes.length, 0);
+  assert.equal(f.routes.length, 1);
 });
 
 test('authenticated Buy Now retains the original Stripe checkout and return URLs', async () => {
@@ -327,7 +338,7 @@ test('authenticated Buy Now retains the original Stripe checkout and return URLs
     responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test' } } } });
   await find(f.render(), 'button').props.onClick();
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].mapId, mapId);
-  assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].successUrl, 'https://example.test?session_id={CHECKOUT_SESSION_ID}&success=true');
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].successUrl, 'https://example.test?session_id={CHECKOUT_SESSION_ID}&success=true&open_map=1');
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].cancelUrl, 'https://example.test/payment-failed?success=false');
   assert.equal(f.routes[0], 'https://stripe.test');
 });
@@ -340,6 +351,81 @@ test('free-map award still redeems without creating a Stripe checkout', async ()
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
   assert.equal(f.routes[0], '/maps');
 });
+
+for (const file of ['components/Common/maps/feature-maps.tsx', 'components/Common/maps/feature-map-detail.tsx']) {
+  const map = { _id: mapId, name: 'Selected Map', isPaid: true, isActive: true, images: [] };
+  const purchaseUI = options => ui(file, { maps: [map], mapDetail: map, ...options });
+  const clickBuy = f => {
+    let stopped = false;
+    const button = find(f.render(), 'button');
+    button.props.onClick({ stopPropagation() { stopped = true; } });
+    if (file.endsWith('feature-maps.tsx')) assert.equal(stopped, true, 'purchase click must not navigate the card to details');
+    return button;
+  };
+
+  test(`${file}: guest Buy Now opens registration without opening details or creating payment`, async () => {
+    const f = purchaseUI({});
+    clickBuy(f); await f.effects();
+    const target = new URL(f.routes[0], 'https://example.test');
+    assert.equal(target.pathname, '/register');
+    assert.equal(target.searchParams.get('redirect'), `/catalog/checkout?mapId=${mapId}&resume=1`);
+    assert.equal(f.calls.loginRequired, undefined);
+    assert.equal(f.routes.length, 1);
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  });
+
+  test(`${file}: signed-in buyer starts the selected map checkout directly`, async () => {
+    const f = purchaseUI({ accessToken: 'token', profile: { purchasedMaps: [] },
+      responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/selected' } } } });
+    clickBuy(f); await f.effects();
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].mapId, mapId);
+    assert.equal(f.routes[0], 'https://stripe.test/selected');
+    assert.equal(f.routes.some(route => route.startsWith('/catalog/')), false);
+  });
+
+  test(`${file}: rapid double-click creates only one checkout`, async () => {
+    const f = purchaseUI({ accessToken: 'token', profile: { purchasedMaps: [] },
+      responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/selected' } } } });
+    clickBuy(f); clickBuy(f); await f.effects();
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+  });
+
+  test(`${file}: free-map rewards are redeemed without Stripe`, async () => {
+    const f = purchaseUI({ accessToken: 'token', profile: { purchasedMaps: [] },
+      awards: [{ type: 'Free Map', isUnlocked: true, config: { mapCount: 1 } }] });
+    clickBuy(f); await f.effects();
+    assert.equal(f.calls.useRedeemFreeMapMutation[0].mapId, mapId);
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+    assert.equal(f.storage.get('selectedMapId'), mapId);
+    assert.equal(f.routes[0], '/maps');
+  });
+
+  test(`${file}: an owned map opens the selected map without another charge`, async () => {
+    const f = purchaseUI({ accessToken: 'token', profile: { purchasedMaps: [{ _id: mapId }] }, storage: [['selectedMapId', 'previous-map']] });
+    clickBuy(f); await f.effects();
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+    assert.equal(f.storage.get('selectedMapId'), mapId);
+    assert.equal(f.routes[0], '/maps');
+  });
+
+  for (const loading of ['profileLoading', 'awardsLoading']) {
+    test(`${file}: waits for ${loading} before allowing a charge`, async () => {
+      const f = purchaseUI({ accessToken: 'token', profile: { purchasedMaps: [] }, [loading]: true });
+      assert.equal(clickBuy(f).props.disabled, true);
+      await f.effects();
+      assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+      assert.equal(f.calls.useRedeemFreeMapMutation, undefined);
+    });
+  }
+
+  test(`${file}: an unavailable reward cannot fall through to a paid checkout`, async () => {
+    const f = purchaseUI({ accessToken: 'token', params: { redeemFreeMap: '1' }, profile: { purchasedMaps: [] } });
+    clickBuy(f); await f.effects();
+    assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+    assert.equal(f.routes.length, 0);
+  });
+}
 
 for (const saved of [undefined, '{broken', 'null', JSON.stringify({ email: 'buyer@example.test', token: 'invalid' })]) {
   test(`fresh checkout requires login without issuing a capability: ${saved}`, async () => {
@@ -462,6 +548,97 @@ test('existing account resumes the chosen map checkout after normal login', asyn
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].mapId, mapId);
   assert.equal(f.routes[0], 'https://stripe.test/existing');
 });
+
+test('Buy Now signup and OTP persist login then immediately start payment for the selected map', async () => {
+  const buy = ui('components/Common/maps/feature-map-detail.tsx');
+  await find(buy.render(), 'button').props.onClick();
+  const signupParams = Object.fromEntries(new URL(buy.routes[0], 'https://example.test').searchParams);
+  const signup = ui('components/auth/register-form.tsx', { exportName: 'RegisterForm', params: signupParams,
+    responses: { useRegisterMutation: { data: { email: 'buyer@example.test' } } } });
+  await find(signup.render(), 'form').props.onSubmit({ fullName: 'Buyer', email: 'buyer@example.test', password: 'password' });
+  const otp = ui('components/auth/otp-verify-form.tsx', { params: Object.fromEntries(new URL(signup.routes[0], 'https://example.test').searchParams),
+    responses: { useVerifyAccountMutation: { success: true, data: { accessToken: 'new-user-token' } } } });
+  find(otp.render(), 'input').props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '123456' } });
+  await find(otp.render(), 'button').props.onClick();
+  assert.equal(otp.state.auth.accessToken, 'new-user-token');
+  assert.deepEqual(otp.actions.map(action => action.type), ['setUser', 'resetCache', 'flushed']);
+  const checkout = ui('components/Common/maps/map-checkout.tsx', { accessToken: otp.state.auth.accessToken, user: otp.state.auth.user,
+    params: Object.fromEntries(new URL(otp.routes[0], 'https://example.test').searchParams), profile: { purchasedMaps: [] },
+    responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/new-user' } } } });
+  checkout.render(); await checkout.effects(); checkout.render(); await checkout.effects();
+  assert.equal(checkout.calls.useCreateMapCheckoutSessionMutation.length, 1);
+  assert.equal(checkout.calls.useCreateMapCheckoutSessionMutation[0].mapId, mapId);
+  assert.equal(checkout.routes[0], 'https://stripe.test/new-user');
+  assert.equal(checkout.state.auth.accessToken, 'new-user-token');
+});
+
+test('checkout waits for profile loading and rapid manual retries cannot create two sessions', async () => {
+  const options = { accessToken: 'token', params: { mapId, resume: '1' }, profileLoading: true, profile: { purchasedMaps: [] },
+    responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/once' } } } };
+  const f = ui('components/Common/maps/map-checkout.tsx', options);
+  f.render(); await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  options.params = { mapId };
+  f.params.delete('resume');
+  options.profileLoading = false;
+  const submit = find(f.render(), 'form').props.onSubmit;
+  submit({ preventDefault() {} }); submit({ preventDefault() {} });
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+});
+
+test('a paid return with lost login offers recovery to the original payment without starting checkout', async () => {
+  const f = ui('components/Common/landing-page/home-page.tsx', { params: { session_id: 'cs_paid', open_map: '1' },
+    verifiedPayment: { data: { status: 'succeeded', userId: { _id: 'buyer' }, mapId } } });
+  f.render(); await f.effects();
+  const login = nodes(f.render()).find(node => node.type === 'a' && node.props.href.startsWith('/login?'));
+  assert.ok(login);
+  const destination = new URL(new URL(login.props.href, 'https://example.test').searchParams.get('redirect'), 'https://example.test');
+  assert.equal(destination.searchParams.get('session_id'), 'cs_paid');
+  assert.equal(destination.searchParams.get('open_map'), '1');
+  assert.equal(destination.searchParams.get('resume'), null);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+});
+
+test('payment return waits for persisted login to rehydrate and then opens its map automatically', async () => {
+  const f = ui('components/Common/landing-page/home-page.tsx', { params: { session_id: 'cs_paid', open_map: '1' },
+    verifiedPayment: { data: { status: 'succeeded', userId: { _id: 'buyer' }, mapId } } });
+  f.render(); await f.effects();
+  assert.equal(f.routes.length, 0);
+  f.state.auth = { accessToken: 'rehydrated-token', user: { id: 'buyer' } };
+  f.render(); await f.effects();
+  assert.equal(f.routes[0], `/maps?mapId=${mapId}`);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+});
+
+test('temporary verification failure offers retry without starting another payment', async () => {
+  const f = ui('components/Common/landing-page/home-page.tsx', { accessToken: 'token', user: { id: 'buyer' },
+    params: { session_id: 'cs_paid', open_map: '1' }, verificationError: { status: 503 } });
+  f.render(); await f.effects();
+  assert.equal(f.routes.length, 0);
+  const retry = find(f.render(), 'button');
+  assert.ok(retry);
+  retry.props.onClick();
+  assert.equal(f.calls.retryVerification.length, 1);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+});
+
+for (const scenario of ['paid', 'unpaid', 'wrong-account', 'failed-verification']) {
+test(`authenticated payment return opens only its paid map and preserves login: ${scenario}`, async () => {
+  const f = ui('components/Common/landing-page/home-page.tsx', { accessToken: 'new-user-token', user: { id: 'buyer' },
+    params: { session_id: 'cs_test', open_map: '1' }, profile: { _id: 'buyer' },
+    ...(scenario === 'failed-verification' ? { verificationError: { status: 500 } } : {
+      verifiedPayment: { data: { status: scenario === 'unpaid' ? 'failed' : 'succeeded', mapId,
+        userId: { _id: scenario === 'wrong-account' ? 'another-buyer' : 'buyer' } } }
+    }) });
+  f.render(); await f.effects();
+  assert.equal(f.state.auth.accessToken, 'new-user-token');
+  assert.equal(f.storage.get('selectedMapId') === mapId, scenario === 'paid');
+  if (scenario === 'paid') assert.equal(f.routes[0], `/maps?mapId=${mapId}`);
+  else assert.equal(f.routes.includes(`/maps?mapId=${mapId}`), false);
+  assert.equal(f.routes.some(route => route.startsWith('/login')), false);
+});
+}
 for (const redirect of [`/claim-promo?code=PROMO&mapId=${mapId}`, `/catalog/${mapId}`]) {
 test(`normal registration preserves the destination through OTP login: ${redirect}`, async () => {
   const signup = ui('components/auth/register-form.tsx', { exportName: 'RegisterForm', params: { redirect },
