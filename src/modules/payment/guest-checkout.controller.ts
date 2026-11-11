@@ -41,29 +41,16 @@ const start = catchAsync(async (req, res) => {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'This map is not available for purchase.')
   }
 
-  let attempt = await GuestCheckout.findOne({ tokenHash })
-  let user
-  if (attempt) {
-    if (attempt.returnOrigin && attempt.returnOrigin !== returnOrigin) {
-      throw new ApiError(StatusCodes.FORBIDDEN, 'Resume checkout on the website where it was started, or sign in to recover your purchase.')
-    }
-    if (attempt.email !== payload.email || String(attempt.mapId) !== payload.mapId ||
-        attempt.expiresAt <= new Date() || attempt.redeemedAt) return loginRequired(res)
-    user = await User.findById(attempt.userId)
-  } else {
-    // Never grant a checkout capability to an existing account, including
-    // abandoned guest accounts. Recover those through email verification.
-    if (await User.findOne({ email: payload.email })) return loginRequired(res)
-    try {
-      user = await User.create({ email: payload.email, provider: 'guest_purchase',
-        role: USER_ROLES.USER, status: USER_STATUS.ACTIVE, verified: false })
-    } catch (error: any) {
-      if (error.code === 11000) return loginRequired(res)
-      throw error
-    }
-    attempt = await GuestCheckout.create({ tokenHash, userId: user._id,
-      mapId: map._id, email: payload.email, returnOrigin, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) })
+  const attempt = await GuestCheckout.findOne({ tokenHash })
+  // New purchases require normal registration/login. Keep only the resume path
+  // for capabilities issued before the rollback, including interrupted creation.
+  if (!attempt) return loginRequired(res)
+  if (attempt.returnOrigin && attempt.returnOrigin !== returnOrigin) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'Resume checkout on the website where it was started, or sign in to recover your purchase.')
   }
+  if (attempt.email !== payload.email || String(attempt.mapId) !== payload.mapId ||
+      attempt.expiresAt <= new Date() || attempt.redeemedAt) return loginRequired(res)
+  const user = await User.findById(attempt.userId)
   if (!user || user.status !== USER_STATUS.ACTIVE || user.role !== USER_ROLES.USER ||
       user.provider !== 'guest_purchase' || user.password || user.verified || user.appId) return loginRequired(res)
 

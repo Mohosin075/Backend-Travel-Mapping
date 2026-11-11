@@ -5,7 +5,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 const crypto = require('node:crypto');
-const frontRequire = require('node:module').createRequire(path.join(__dirname, '../../frontend_giovafilm_roadtripeado/package.json'));
+const frontendRoot = process.env.GIOVAFILM_FRONTEND_DIR || [
+  path.resolve(__dirname, '../../frontend_giovafilm_roadtripeado'),
+  path.resolve(__dirname, '../../dashboard/giovafilm_mapping'),
+].find(dir => fs.existsSync(path.join(dir, 'package.json')));
+const frontRequire = require('node:module').createRequire(path.join(frontendRoot, 'package.json'));
 const mapId = 'b'.repeat(24);
 function nodes(tree) {
   if (!tree || typeof tree !== 'object') return [];
@@ -60,7 +64,9 @@ function ui(file, options = {}) {
     'react-redux': { useDispatch: () => dispatch },
     'react-hook-form': { useForm: () => ({ register: name => ({ name }), handleSubmit: fn => fn, setValue() {}, watch: name => options.params?.[name] || '', formState: { errors: {} } }) },
     '@hookform/resolvers/zod': { zodResolver: () => ({}) },
-    'next/link': 'a', 'next/navigation': { useSearchParams, useRouter: () => router },
+    'next/link': 'a', 'next/navigation': { useSearchParams, useRouter: () => router, useParams: () => ({ id: mapId }) },
+    '@/components/shared/login-required-modal': { useLoginRequired: () => ({ openLoginRequired: path => (calls.loginRequired ||= []).push(path) }) },
+    '@/redux/features/award/awardApi': { useGetAwardsQuery: () => ({ data: { data: options.awards || [] } }), useRedeemFreeMapMutation: mutation('useRedeemFreeMapMutation') },
     'next-themes': { useTheme: () => ({ resolvedTheme: 'light' }) },
     '@vis.gl/react-google-maps': { APIProvider: 'provider', Map: 'map', MapControl: 'control', ControlPosition: {}, useMapsLibrary: () => undefined },
     './MapFilters': { MapFilters: 'filters', SelectedMapFilter: 'selected-filter' },
@@ -71,7 +77,7 @@ function ui(file, options = {}) {
     '@/redux/features/public/publicApi': { useGetPublicPlacesBusinessQuery: (args, config) => { if (!config?.skip) (calls.discovery ||= []).push(args); return { currentData: { data: [] }, isSuccess: true }; } },
     'lucide-react': new Proxy({}, { get: () => 'icon' }),
     'motion/react': { motion: new Proxy({}, { get: (_, name) => name }) },
-    sonner: { toast: { success() {}, error() {}, loading() {} } },
+    sonner: { toast: { success() {}, error() {}, loading() {}, info() {} } },
     '@/lib/i18n/LanguageContext': { useLanguage: () => ({ language: 'en', t: key => key }) },
     '@/lib/utils': { decodeJwtPayload: () => ({ authId: 'user', email: 'buyer@example.test', role: 'user' }), getLocalized: value => typeof value === 'string' ? value : value?.en || '', getApiErrorMessage: err => err.message },
     '@/lib/roles': { isDashboardRole: role => role === 'admin' },
@@ -83,7 +89,7 @@ function ui(file, options = {}) {
     '@/components/shared/cross-tab-logout-listener': { broadcastLogout: () => actions.push({ type: 'broadcastLogout' }) },
     '@/redux/features/payment/paymentApi': authApi,
     '@/redux/features/promo/promoApi': { ...Object.fromEntries(['useClaimFreePromoMutation', 'useCreatePromoCheckoutSessionMutation', 'useVerifyPromoPaymentMutation'].map(name => [name, mutation(name)])),
-      useVerifyPromoCodeQuery: () => ({ data: options.promo ? { data: options.promo } : undefined, isLoading: false, isError: false, refetch() {} }) },
+      useVerifyPromoCodeQuery: () => ({ data: options.promo ? { data: options.promo } : undefined, isLoading: false, isError: Boolean(options.promoError), error: options.promoError, refetch() {} }) },
     '@/redux/features/user/userApi': {
       userApi: { util: { updateQueryData: (endpoint, args, update) => ({ type: 'updateProfileCache', update }) } },
       useGetProfileQuery: () => ({ data: options.profile, isFetching: Boolean(options.profileLoading), isLoading: Boolean(options.profileLoading), isError: Boolean(options.profileError), refetch: () => ({ unwrap: async () => {
@@ -95,12 +101,12 @@ function ui(file, options = {}) {
       useGetMapsQuery: () => ({ data: { data: options.maps || [{ _id: mapId, name: 'New Map', isPaid: true }], meta: { totalPage: 1 } }, isFetching: false, isSuccess: true }) },
   };
   const module = { exports: {} };
-  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../../frontend_giovafilm_roadtripeado', file), 'utf8'), {
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(frontendRoot, file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText, { module, exports: module.exports, require: name => imports[name] ||
     (/ui\/(button|input|label|checkbox)/.test(name) ? { Button: 'button', Input: 'input', Label: 'label', Checkbox: 'checkbox' } : name === 'zod' ? require('zod') : {}),
     console, URLSearchParams, process: { env: {} }, crypto: crypto.webcrypto, localStorage: storageApi, sessionStorage: storageApi,
-    window: { innerWidth: 1200, addEventListener() {}, removeEventListener() {}, location: { origin: 'https://example.test', assign: path => routes.push(path) } }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
+    window: { innerWidth: 1200, addEventListener() {}, removeEventListener() {}, location: { origin: 'https://example.test', pathname: `/catalog/${mapId}`, search: '', assign: path => routes.push(path), set href(path) { routes.push(path); } } }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
   });
   Component = module.exports.default || module.exports[options.exportName];
   const render = () => {
@@ -308,39 +314,92 @@ test('Google login retains selected promo destination and clears previous user c
   assert.equal(f.routes[0], '/claim-promo?code=PROMO');
   assert.ok(f.actions.some(action => action.type === 'resetCache'));
 });
-test('new guest saves its capability before checkout and resumes its map purchase', async () => {
-  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId }, responses: { useStartGuestMapCheckoutMutation: { data: { url: 'https://stripe.test' } } } });
-  find(f.render(), 'input').props.onChange({ target: { value: 'BUYER@example.test' } });
+test('guest Buy Now opens the login/register modal for the same map without starting payment', async () => {
+  const f = ui('components/Common/maps/feature-map-detail.tsx');
+  await find(f.render(), 'button').props.onClick();
+  assert.deepEqual(f.calls.loginRequired, [`/catalog/${mapId}`]);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  assert.equal(f.routes.length, 0);
+});
+
+test('authenticated Buy Now retains the original Stripe checkout and return URLs', async () => {
+  const f = ui('components/Common/maps/feature-map-detail.tsx', { accessToken: 'token', profile: { purchasedMaps: [] },
+    responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test' } } } });
+  await find(f.render(), 'button').props.onClick();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].mapId, mapId);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].successUrl, 'https://example.test?session_id={CHECKOUT_SESSION_ID}&success=true');
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].cancelUrl, 'https://example.test/payment-failed?success=false');
+  assert.equal(f.routes[0], 'https://stripe.test');
+});
+
+test('free-map award still redeems without creating a Stripe checkout', async () => {
+  const f = ui('components/Common/maps/feature-map-detail.tsx', { accessToken: 'token', profile: { purchasedMaps: [] },
+    awards: [{ type: 'Free Map', isUnlocked: true, config: { mapCount: 1 } }] });
+  await find(f.render(), 'button').props.onClick();
+  assert.equal(f.calls.useRedeemFreeMapMutation[0].mapId, mapId);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  assert.equal(f.routes[0], '/maps');
+});
+
+for (const saved of [undefined, '{broken', 'null', JSON.stringify({ email: 'buyer@example.test', token: 'invalid' })]) {
+  test(`fresh checkout requires login without issuing a capability: ${saved}`, async () => {
+    const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId, cancelled: '1', resume: '1' },
+      storage: saved === undefined ? [] : [[`map-checkout:${mapId}`, saved]] });
+    assert.equal(find(f.render(), 'input'), undefined);
+    await f.effects(); f.render(); await f.effects();
+    const target = new URL(f.routes[0], 'https://example.test');
+    assert.equal(target.pathname, `/catalog/${mapId}`);
+    assert.equal(target.searchParams.get('loginRequired'), '1');
+    assert.equal(target.searchParams.get('redirect'), `/catalog/${mapId}`);
+    assert.equal(f.calls.useStartGuestMapCheckoutMutation, undefined);
+    assert.equal(f.storage.get(`map-checkout:${mapId}`), saved);
+  });
+}
+
+const legacyStorage = () => [[`map-checkout:${mapId}`, JSON.stringify({ email: 'buyer@example.test', token: 'c'.repeat(64) })]];
+test('legacy guest resumes the saved capability without changing its account or token', async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId, cancelled: '1' }, storage: legacyStorage(),
+    responses: { useStartGuestMapCheckoutMutation: { data: { url: 'https://stripe.test' } } } });
+  f.render(); await f.effects();
   find(f.render(), 'form').props.onSubmit({ preventDefault() {} });
   await f.effects();
   assert.equal(f.calls.useStartGuestMapCheckoutMutation[0].email, 'buyer@example.test');
-  assert.match(JSON.parse(f.storage.get(`map-checkout:${mapId}`)).token, /^[a-f\d]{64}$/);
+  assert.equal(f.calls.useStartGuestMapCheckoutMutation[0].checkoutToken, 'c'.repeat(64));
+  assert.equal(f.storage.get(`map-checkout:${mapId}`), legacyStorage()[0][1]);
+  assert.equal(find(f.render(), 'input'), undefined);
   assert.equal(f.routes[0], 'https://stripe.test');
 });
 test('existing email button opens login instead of silently leaving the user on checkout', async () => {
-  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId },
+  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId }, storage: legacyStorage(),
     responses: { useStartGuestMapCheckoutMutation: { data: { loginRequired: true } } } });
-  find(f.render(), 'input').props.onChange({ target: { value: 'buyer@example.test' } });
+  f.render(); await f.effects();
   find(f.render(), 'form').props.onSubmit({ preventDefault() {} });
   await f.effects();
   const target = new URL(f.routes[0], 'https://example.test');
   assert.equal(target.pathname, '/login');
   assert.equal(target.searchParams.get('email'), 'buyer@example.test');
-  assert.equal(target.searchParams.get('redirect'), `/catalog/checkout?mapId=${mapId}&resume=1`);
+  assert.equal(target.searchParams.get('redirect'), `/catalog/${mapId}`);
 });
 test('checkout connection timeout shows an actionable error beside the payment button', async () => {
-  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId }, errors: { useStartGuestMapCheckoutMutation: { status: 'TIMEOUT_ERROR' } } });
-  find(f.render(), 'input').props.onChange({ target: { value: 'buyer@example.test' } });
+  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId }, storage: legacyStorage(), errors: { useStartGuestMapCheckoutMutation: { status: 'TIMEOUT_ERROR' } } });
+  f.render(); await f.effects();
   find(f.render(), 'form').props.onSubmit({ preventDefault() {} });
   await f.effects();
   assert.ok(nodes(f.render()).some(node => node.props?.role === 'alert' && /payment server/.test(node.props.children)));
 });
-test('invalid purchase email explicitly explains why submission cannot continue', () => {
-  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId } });
-  find(f.render(), 'input').props.onInvalid();
-  assert.ok(nodes(f.render()).some(node => node.props?.role === 'alert' && /valid email/.test(node.props.children)));
+for (const saved of [undefined, 'null', '{broken', JSON.stringify({ email: 'buyer@example.test', token: 'invalid' })]) {
+test(`lost/corrupt capability during a legacy retry returns to login without creating another checkout: ${saved}`, async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId }, storage: legacyStorage() });
+  f.render(); await f.effects();
+  const form = find(f.render(), 'form');
+  if (saved === undefined) f.storage.delete(`map-checkout:${mapId}`);
+  else f.storage.set(`map-checkout:${mapId}`, saved);
+  form.props.onSubmit({ preventDefault() {} });
+  await f.effects();
+  assert.equal(new URL(f.routes[0], 'https://example.test').searchParams.get('loginRequired'), '1');
   assert.equal(f.calls.useStartGuestMapCheckoutMutation, undefined);
 });
+}
 test('existing map owner opens the correct map without another Stripe request', async () => {
   const f = ui('components/Common/maps/map-checkout.tsx', { accessToken: 'token', params: { mapId, resume: '1' }, profile: { purchasedMaps: [mapId] }, storage: [['selectedMapId', 'old-map']] });
   f.render(); await f.effects();
@@ -348,12 +407,43 @@ test('existing map owner opens the correct map without another Stripe request', 
   assert.equal(f.routes[0], '/maps');
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
 });
-test('lost checkout storage does not auto-login on a success URL', async () => {
-  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId, session_id: 'cs_test' } });
+for (const saved of [undefined, 'null', '{broken', JSON.stringify({ email: 'buyer@example.test', token: 'invalid' })]) {
+test(`lost/corrupt checkout storage offers recovery without auto-login or another charge: ${saved}`, async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId, session_id: 'cs_test' },
+    storage: saved === undefined ? [] : [[`map-checkout:${mapId}`, saved]] });
   f.render(); await f.effects();
   assert.equal(f.calls.useCompleteGuestMapCheckoutMutation, undefined);
   assert.equal(f.actions.some(action => action.type === 'setUser'), false);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
   assert.equal(f.routes.length, 0);
+  const links = nodes(f.render()).filter(node => node.type === 'a');
+  for (const pathname of ['/login', '/set-password']) {
+    const recovery = links.find(node => new URL(node.props.href, 'https://example.test').pathname === pathname);
+    assert.ok(recovery, `missing ${pathname} recovery link`);
+    assert.equal(new URL(recovery.props.href, 'https://example.test').searchParams.get('redirect'), '/profile/purchased-maps');
+  }
+});
+}
+
+test('payment return cannot overwrite a different signed-in account', async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { accessToken: 'another-account-token',
+    user: { email: 'another@example.test' }, params: { mapId, session_id: 'cs_test' }, storage: legacyStorage(), profile: { purchasedMaps: [] } });
+  f.render(); await f.effects();
+  assert.equal(f.calls.useCompleteGuestMapCheckoutMutation, undefined);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  assert.equal(f.actions.some(action => action.type === 'setUser'), false);
+  assert.ok(nodes(f.render()).some(node => node.props?.role === 'alert' && /another account/.test(node.props.children)));
+});
+
+test('legacy completion requiring normal login opens purchased maps without automatically buying again', async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId, session_id: 'cs_test' }, storage: legacyStorage(),
+    responses: { useCompleteGuestMapCheckoutMutation: { data: { loginRequired: true } } } });
+  f.render(); await f.effects();
+  const target = new URL(f.routes[0], 'https://example.test');
+  assert.equal(target.pathname, '/login');
+  assert.equal(target.searchParams.get('email'), 'buyer@example.test');
+  assert.equal(target.searchParams.get('redirect'), '/profile/purchased-maps');
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
 });
 test('successful guest verification logs in, clears old cache, persists and opens the purchased map', async () => {
   const f = ui('components/Common/maps/map-checkout.tsx', { params: { mapId, session_id: 'cs_test' },
@@ -372,8 +462,8 @@ test('existing account resumes the chosen map checkout after normal login', asyn
   assert.equal(f.calls.useCreateMapCheckoutSessionMutation[0].mapId, mapId);
   assert.equal(f.routes[0], 'https://stripe.test/existing');
 });
-test('normal registration preserves the promo and selected map through OTP login', async () => {
-  const redirect = `/claim-promo?code=PROMO&mapId=${mapId}`;
+for (const redirect of [`/claim-promo?code=PROMO&mapId=${mapId}`, `/catalog/${mapId}`]) {
+test(`normal registration preserves the destination through OTP login: ${redirect}`, async () => {
   const signup = ui('components/auth/register-form.tsx', { exportName: 'RegisterForm', params: { redirect },
     responses: { useRegisterMutation: { data: { email: 'buyer@example.test' } } } });
   await find(signup.render(), 'form').props.onSubmit({ fullName: 'Buyer', email: 'buyer@example.test', password: 'password' });
@@ -384,12 +474,148 @@ test('normal registration preserves the promo and selected map through OTP login
   assert.equal(otp.routes[0], redirect);
   assert.deepEqual(otp.actions.map(action => action.type), ['setUser', 'resetCache', 'flushed']);
 });
+}
+
+test('ordinary login returns to map details without automatically starting another purchase', async () => {
+  const f = ui('components/auth/Login-form.tsx', { exportName: 'LoginForm', params: { redirect: `/catalog/${mapId}` },
+    responses: { useLoginMutation: { success: true, data: { accessToken: 'token' } } } });
+  await find(f.render(), 'form').props.onSubmit({ email: 'buyer@example.test', password: 'password', rememberMe: false });
+  assert.equal(f.routes[0], `/catalog/${mapId}`);
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+});
 test('promo success URL cannot display success until server payment verification succeeds', async () => {
   const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO', success: 'true', session_id: 'cs_test' }, errors: { useVerifyPromoPaymentMutation: { data: { message: 'Payment unpaid' } } } });
   f.render(); await f.effects();
   const tree = f.render();
   assert.ok(nodes(tree).some(node => node.props?.role === 'alert' && node.props.children === 'Payment unpaid'));
   assert.equal(nodes(tree).some(node => node.props?.children === 'promo_claim.upgrade_success'), false);
+});
+
+test('paid promo return retains code, selected map and Stripe session through login', async () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { params: { code: 'PROMO', mapId, success: 'true', session_id: 'cs_test' } });
+  const link = nodes(f.render()).find(node => node.type === 'a' && node.props.href.startsWith('/login?'));
+  const next = new URL(new URL(link.props.href, 'https://example.test').searchParams.get('redirect'), 'https://example.test');
+  assert.equal(next.searchParams.get('code'), 'PROMO');
+  assert.equal(next.searchParams.get('mapId'), mapId);
+  assert.equal(next.searchParams.get('success'), 'true');
+  assert.equal(next.searchParams.get('session_id'), 'cs_test');
+  const login = ui('components/auth/Login-form.tsx', { exportName: 'LoginForm', params: { redirect: next.pathname + next.search },
+    responses: { useLoginMutation: { data: { accessToken: 'token' } } } });
+  await find(login.render(), 'form').props.onSubmit({ email: 'buyer@example.test', password: 'password', rememberMe: false });
+  assert.equal(login.routes[0], next.pathname + next.search);
+});
+
+test('paid promo confirmation is invalid immediately after logout or account change', async () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO', mapId, success: 'true', session_id: 'cs_test' },
+    profile: { purchasedMaps: [] }, responses: { useVerifyPromoPaymentMutation: { data: { mapId } } } });
+  f.render(); await f.effects();
+  assert.ok(nodes(f.render()).some(node => node.props?.children === 'promo_claim.upgrade_success'));
+  for (const token of [null, 'another-account-token']) {
+    f.state.auth.accessToken = token;
+    assert.equal(nodes(f.render()).some(node => node.props?.children === 'promo_claim.upgrade_success'), false);
+  }
+});
+
+test('a delayed promo payment response cannot grant cached access after logout', async () => {
+  let resolvePayment;
+  const pending = new Promise(resolve => { resolvePayment = resolve; });
+  const profile = { purchasedMaps: [] };
+  const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO', mapId, success: 'true', session_id: 'cs_test' },
+    profile, responses: { useVerifyPromoPaymentMutation: pending } });
+  f.render(); await f.effects();
+  f.state.auth.accessToken = null;
+  f.render(); await f.effects();
+  resolvePayment({ data: { mapId } });
+  await f.effects();
+  assert.deepEqual(profile.purchasedMaps, []);
+  assert.equal(f.actions.some(action => action.type === 'updateProfileCache'), false);
+  assert.equal(nodes(f.render()).some(node => node.props?.children === 'promo_claim.upgrade_success'), false);
+});
+
+test('a delayed profile refresh after promo verification cannot update another account', async () => {
+  let resolveProfile;
+  const pending = new Promise(resolve => { resolveProfile = resolve; });
+  const options = { accessToken: 'token', params: { code: 'PROMO', mapId, success: 'true', session_id: 'cs_test' },
+    profile: { purchasedMaps: [] }, profileResponses: [pending], responses: { useVerifyPromoPaymentMutation: { data: { mapId } } } };
+  const f = ui('app/(common)/claim-promo/page.tsx', options);
+  f.render(); await f.effects();
+  options.profile = { email: 'another@example.test', purchasedMaps: [] };
+  f.state.auth.accessToken = null;
+  f.render(); await f.effects();
+  resolveProfile({ purchasedMaps: [mapId] });
+  await f.effects();
+  assert.deepEqual(options.profile.purchasedMaps, []);
+});
+
+for (const failLogout of [false, true]) {
+test(`promo account switching preserves the invitation and clears state only after server logout: ${failLogout}`, async () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO', mapId },
+    profile: { email: 'wrong@example.test', verified: true, purchasedMaps: [] }, promo: { mapId, price: 5, recipientEmail: 'buyer@example.test' },
+    ...(failLogout ? { errors: { useLogoutMutation: { message: 'Cannot logout' } } } : {}) });
+  const openMismatch = nodes(f.render()).find(node => node.type === 'button' && JSON.stringify(node.props.children).includes('View Mismatch Details'));
+  assert.ok(openMismatch);
+  openMismatch.props.onClick();
+  const switchAccount = nodes(f.render()).find(node => node.type === 'button' && JSON.stringify(node.props.children).includes('Log Out & Switch Account'));
+  await switchAccount.props.onClick();
+  assert.equal(f.calls.useLogoutMutation.length, 1);
+  if (failLogout) {
+    assert.equal(f.routes.length, 0);
+    assert.equal(f.actions.length, 0);
+  } else {
+    assert.deepEqual(f.actions.map(action => action.type), ['broadcastLogout', 'logout', 'resetCache', 'flushed']);
+    const login = new URL(f.routes[0], 'https://example.test');
+    assert.equal(login.searchParams.get('email'), 'buyer@example.test');
+    assert.equal(login.searchParams.get('redirect'), `/claim-promo?code=PROMO&mapId=${mapId}`);
+  }
+  assert.equal(f.calls.useClaimFreePromoMutation, undefined);
+  assert.equal(f.calls.useCreatePromoCheckoutSessionMutation, undefined);
+});
+}
+
+test('free promo confirmation and pending map navigation do not survive logout', async () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO', mapId },
+    profile: { verified: true, purchasedMaps: [] }, promo: { mapId, price: 0 },
+    responses: { useClaimFreePromoMutation: { data: { mapId } } } });
+  f.render(); await f.effects();
+  const confirmed = f.render();
+  assert.ok(nodes(confirmed).some(node => node.type === 'button' && JSON.stringify(node.props.children).includes('promo_claim.open_map')));
+  f.state.auth.accessToken = null;
+  assert.equal(nodes(f.render()).some(node => node.props?.children === 'promo_claim.invitation_claimed'), false);
+  await f.effects();
+  f.timers();
+  assert.equal(f.routes.some(route => route.startsWith('/maps')), false);
+});
+
+test('an already-used promo sends a returning buyer to purchased maps after login', () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { params: { code: 'PROMO' },
+    promoError: { data: { message: 'This promo link has already been used' } } });
+  const loginButton = nodes(f.render()).find(node => node.type === 'button' && node.props.onClick);
+  loginButton.props.onClick();
+  assert.equal(new URL(f.routes[0], 'https://example.test').searchParams.get('redirect'), '/profile/purchased-maps');
+});
+
+for (const price of [0, 5]) {
+test(`${price ? 'paid' : 'free'} targeted promo keeps its code/map/email for registration and login`, () => {
+  const f = ui('app/(common)/claim-promo/page.tsx', { params: { code: 'PROMO', mapId },
+    promo: { mapId, price, recipientEmail: 'buyer@example.test' } });
+  const buttons = nodes(f.render()).filter(node => node.type === 'button' && node.props.onClick);
+  for (const button of buttons) button.props.onClick();
+  for (const pathname of ['/login', '/register']) {
+    const target = f.routes.map(route => new URL(route, 'https://example.test')).find(url => url.pathname === pathname);
+    assert.ok(target, `missing ${pathname} navigation`);
+    assert.equal(target.searchParams.get('email'), 'buyer@example.test');
+    assert.equal(target.searchParams.get('redirect'), `/claim-promo?code=PROMO&mapId=${mapId}`);
+  }
+  assert.equal(f.calls.useClaimFreePromoMutation, undefined);
+  assert.equal(f.calls.useCreatePromoCheckoutSessionMutation, undefined);
+});
+}
+
+test('Google login initiation retains the entire selected promo return path', async () => {
+  const redirect = `/claim-promo?code=PROMO&mapId=${mapId}`;
+  const f = ui('components/shared/social-login/social-login.tsx', { params: { redirect } });
+  find(f.render(), 'button').props.onClick();
+  assert.equal(new URL(f.routes[0]).searchParams.get('redirect'), redirect);
 });
 test('new guest must verify its email before auto-claiming a recipient-specific free promo', async () => {
   const f = ui('app/(common)/claim-promo/page.tsx', { accessToken: 'token', params: { code: 'PROMO' }, profile: { email: 'buyer@example.test', verified: false }, promo: { mapId, price: 0, recipientEmail: 'buyer@example.test' } });
@@ -471,7 +697,7 @@ test('incorrect existing password stays on login without verification redirect o
 
 test('auth navigation rejects external and backslash destinations while retaining valid internal paths', () => {
   const module = { exports: {} }, destinations = [];
-  const source = fs.readFileSync(path.join(__dirname, '../../frontend_giovafilm_roadtripeado/redux/features/auth/authSlice.ts'), 'utf8');
+  const source = fs.readFileSync(path.join(frontendRoot, 'redux/features/auth/authSlice.ts'), 'utf8');
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText,
     { module, exports: module.exports, URL, window: { location: { origin: 'https://example.test', assign: path => destinations.push(path) } },
       require: name => name === '@reduxjs/toolkit' ? frontRequire(name) : name === '@/lib/utils' ? { decodeJwtPayload: () => ({ role: 'user' }) } : {} });

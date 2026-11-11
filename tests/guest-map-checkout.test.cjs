@@ -5,11 +5,15 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 const crypto = require('node:crypto');
+const frontendRoot = process.env.GIOVAFILM_FRONTEND_DIR || [
+  path.resolve(__dirname, '../../frontend_giovafilm_roadtripeado'),
+  path.resolve(__dirname, '../../dashboard/giovafilm_mapping'),
+].find(dir => fs.existsSync(path.join(dir, 'package.json')));
 const mapId = 'a'.repeat(24), userId = 'b'.repeat(24), token = 'c'.repeat(64);
 const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 function load(file, imports) {
   const module = { exports: {} };
-  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
   }).outputText, { module, exports: module.exports, require: name => imports[name] || (name.startsWith('.') ? {} : require(name)), console, Date, Buffer, URL });
   return module.exports;
@@ -67,16 +71,15 @@ function fixture(options = {}) {
   return { controller, calls, res, attempt: () => attempt, user: () => user };
 }
 const guestUser = { _id: userId, email: 'buyer@example.test', provider: 'guest_purchase', role: 'user', status: 'active', verified: false };
-test('account is created before Stripe, normalized, without password or login; only token hash stored', async () => {
+test('new guest purchase requires login without creating an account, attempt, payment or token', async () => {
   const f = fixture();
   await f.controller.start({ body: { email: ' Buyer@Example.Test ', mapId, checkoutToken: token, amount: 1 } }, f.res);
-  assert.equal(f.calls.created[0].email, 'buyer@example.test');
-  assert.equal(f.calls.created[0].password, undefined);
-  assert.equal(f.calls.checkout[0][0].authId, userId);
-  assert.equal(f.calls.checkout[0][2], `guest-${userId}-${tokenHash}`);
-  assert.equal(f.calls.checkout[0][1].amount, undefined);
-  assert.equal(f.attempt().tokenHash, tokenHash);
-  assert.equal(f.attempt().checkoutToken, undefined);
+  assert.equal(f.res.output.data.loginRequired, true);
+  assert.equal(f.calls.created.length, 0);
+  assert.equal(f.calls.checkout.length, 0);
+  assert.equal(f.calls.stripe.length, 0);
+  assert.equal(f.attempt(), null);
+  assert.equal(f.user(), null);
   assert.equal(f.calls.tokens.length, 0);
   assert.equal(f.calls.cookies.length, 0);
 });
@@ -88,11 +91,22 @@ for (const user of [guestUser, { ...guestUser, provider: 'google' }, { ...guestU
     assert.equal(f.calls.created.length + f.calls.checkout.length + f.calls.tokens.length, 0);
   });
 }
-test('concurrent registration duplicate email requires login', async () => {
-  const f = fixture({ duplicateEmail: true });
-  await f.controller.start({ body: { email: guestUser.email, mapId, checkoutToken: token } }, f.res);
+test('an old client with a new capability cannot start another guest purchase', async () => {
+  const f = fixture({ user: guestUser, attempt: {} });
+  await f.controller.start({ body: { email: guestUser.email, mapId, checkoutToken: 'd'.repeat(64) } }, f.res);
   assert.equal(f.res.output.data.loginRequired, true);
+  assert.equal(f.calls.created.length + f.calls.checkout.length + f.calls.tokens.length, 0);
+  assert.equal(f.attempt().tokenHash, tokenHash);
 });
+for (const change of [{ email: 'other@example.test' }, { mapId: 'd'.repeat(24) },
+  { expiresAt: new Date(0) }, { redeemedAt: new Date() }]) {
+  test(`legacy resume with mismatched or unavailable attempt (${Object.keys(change)[0]}) requires login`, async () => {
+    const f = fixture({ user: guestUser, attempt: change });
+    await f.controller.start({ body: { email: guestUser.email, mapId, checkoutToken: token } }, f.res);
+    assert.equal(f.res.output.data.loginRequired, true);
+    assert.equal(f.calls.created.length + f.calls.checkout.length + f.calls.tokens.length + f.calls.stripe.length, 0);
+  });
+}
 test('cancelled checkout resumes the same Stripe session without another account or payment', async () => {
   const f = fixture({ user: guestUser, attempt: {}, session: { status: 'open', url: 'https://stripe.test/resume' } });
   await f.controller.start({ body: { email: guestUser.email, mapId, checkoutToken: token } }, f.res);
@@ -106,7 +120,7 @@ test('invalid map creates no account', async () => {
 });
 for (const origin of ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://[::1]:3000']) {
   test(`development checkout returns to its original browser origin: ${origin}`, async () => {
-    const f = fixture({ config: { node_env: 'development' } });
+    const f = fixture({ user: guestUser, attempt: { sessionId: undefined, returnOrigin: origin }, config: { node_env: 'development' } });
     await f.controller.start({ headers: { origin }, body: { email: guestUser.email, mapId, checkoutToken: token } }, f.res);
     assert.equal(new URL(f.calls.checkout[0][1].successUrl).origin, origin);
     assert.equal(new URL(f.calls.checkout[0][1].cancelUrl).origin, origin);
@@ -115,13 +129,13 @@ for (const origin of ['http://localhost:3000', 'http://localhost:3001', 'http://
 }
 test('production backend permits an explicitly configured localhost frontend without redirecting it to production', async () => {
   const origin = 'http://localhost:3000';
-  const f = fixture({ config: { cors_origins: [origin] } });
+  const f = fixture({ user: guestUser, attempt: { sessionId: undefined, returnOrigin: origin }, config: { cors_origins: [origin] } });
   await f.controller.start({ headers: { origin }, body: { email: guestUser.email, mapId, checkoutToken: token } }, f.res);
   assert.equal(new URL(f.calls.checkout[0][1].successUrl).origin, origin);
 });
 test('normal production checkout retains the production frontend origin', async () => {
   const origin = 'https://example.test';
-  const f = fixture();
+  const f = fixture({ user: guestUser, attempt: { sessionId: undefined, returnOrigin: origin } });
   await f.controller.start({ headers: { origin }, body: { email: guestUser.email, mapId, checkoutToken: token,
     successUrl: 'https://evil.test', cancelUrl: 'https://evil.test' } }, f.res);
   assert.equal(new URL(f.calls.checkout[0][1].successUrl).origin, origin);
@@ -309,8 +323,8 @@ test('Google claim verifies only the new guest account and retires its purchase 
   assert.equal(writes[0][1].$set.appId, 'google-id');
 });
 
-test('guest checkout uses catalog allowance while other protected routes retain their guard', () => {
-  const { middleware } = load('../frontend_giovafilm_roadtripeado/middleware.ts', {
+test('legacy checkout returns remain public while other protected routes retain their guard', () => {
+  const { middleware } = load(path.join(frontendRoot, 'middleware.ts'), {
     'next/server': { NextResponse: { next: () => 'allowed', redirect: url => url } },
   });
   const request = pathname => ({ nextUrl: new URL(`https://example.test${pathname}`), url: `https://example.test${pathname}`, cookies: { get: () => undefined } });

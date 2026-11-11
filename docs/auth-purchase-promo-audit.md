@@ -2,6 +2,14 @@
 
 This is a local source review plus executable tests. No production deployment, live charge, customer email or production database write was performed.
 
+## Promo login follow-up (11 November 2026)
+
+- Paid promo returns now retain the promo code, selected map, success flag and Stripe session through login.
+- Free/paid confirmation, cached entitlement updates and delayed map navigation are scoped to the active account and invitation. Logout or account changes invalidate the previous success view; delayed responses cannot update another account's cached maps.
+- An already-redeemed promo directs a returning buyer to Purchased Maps after login.
+- Added executable checks for targeted free/paid promo login/register links, Google login return paths, OTP/password recovery destinations, paid-return reauthentication, logout/account switching, failed server logout, delayed verification/profile responses and free-claim navigation after logout.
+- All four purchase/auth/promo/UI suites passed: **233 tests, 0 failures**. Frontend production build and its TypeScript phase passed. Google provider interaction, real email/Stripe delivery and production cookies remain staging checks; the executable checks mock external services.
+
 ## Problems found and fixed
 
 - Login-to-OTP lost the return destination. The login/forgot-password/signup/OTP/password-setup/Google paths now retain the selected purchase or promo/map destination.

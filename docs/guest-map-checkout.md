@@ -2,7 +2,21 @@
 
 Local implementation only. No production database or Stripe account was used for verification.
 
-## Behavior
+## Current behavior after the login-first rollback (11 November 2026)
+
+- New visitor Buy Now opens the original login/register modal and retains the map detail URL. After authentication, Buy Now uses the existing authenticated Stripe checkout.
+- Fresh guest visits to `/catalog/checkout` return to the same map's login/register flow. The page no longer generates capabilities or accepts new purchase emails.
+- `/payment/guest/start` only resumes an existing valid capability. With no matching attempt, it returns `loginRequired` without creating an account, attempt or Stripe session. There is no environment flag required to disable new guest purchases.
+- Existing saved attempts, cancelled checkouts, interrupted Stripe session creation and paid returns remain supported. A saved checkout email is displayed read-only. Completion, ownership checks, idempotency and return-origin restrictions remain intact.
+- Passwordless guest buyers retain `/set-password`, OTP, Google recovery, reminders and their existing purchases. No records or indexes should be removed during this rollback.
+- Deploy frontend first, then backend. Verify outstanding guest sessions and payments before retiring compatibility code; account recovery must remain available for existing passwordless users.
+- Automated checks: run the four purchase/auth/promo suites listed below. The two cross-repository purchase suites now discover either the sibling frontend checkout or `../dashboard/giovafilm_mapping`; `GIOVAFILM_FRONTEND_DIR` can select another checkout explicitly.
+- Lost or corrupted browser capabilities now offer login and password-setup links on a payment return. Recovery returns paid orders to purchased maps and unfinished attempts to map details, without automatically starting another payment.
+- Rollback and promo-login follow-up validation: 233 purchase/auth/promo/UI tests passed, both TypeScript checks passed, the frontend production build passed, and the backend build passed with output directed to a temporary directory. External services were mocked in the tests; no deployment or live payment was performed.
+
+## Original guest-checkout behavior (historical reference)
+
+The remaining sections document the original guest-checkout launch, including its original rollout order and validation counts. Use the current behavior and rollout order above for the login-first rollback.
 
 - Guest Buy Now opens `/catalog/checkout?mapId=...` and asks for email.
 - A new email creates an active, unverified `user` with `provider=guest_purchase`, without a password, **before** Stripe checkout is created. No login token is issued at this stage.
