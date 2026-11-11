@@ -54,6 +54,7 @@ function ui(file, options = {}) {
   };
   const mutation = name => () => [body => ({ unwrap: async () => {
     (calls[name] ||= []).push(body);
+    if (options.mutationWait?.[name]) await options.mutationWait[name];
     if (options.errors?.[name]) throw options.errors[name];
     return options.responses?.[name] || { success: true, data: {} };
   } }), { isLoading: false }];
@@ -99,7 +100,7 @@ function ui(file, options = {}) {
         return options.profileResponses?.shift() || options.profile;
       } }) }),
     },
-    '@/redux/features/map/mapApi': { useGetMapByIdQuery: () => ({ data: { data: options.mapDetail || { _id: mapId, name: 'New Map', isPaid: true } }, isLoading: false }),
+    '@/redux/features/map/mapApi': { useGetMapByIdQuery: () => ({ data: options.mapLoading || options.mapUnavailable ? undefined : { data: options.mapDetail || { _id: mapId, name: 'New Map', isPaid: true } }, isLoading: Boolean(options.mapLoading), isError: Boolean(options.mapError) }),
       useGetMapsQuery: () => ({ data: { data: options.maps || [{ _id: mapId, name: 'New Map', isPaid: true }], meta: { totalPage: 1 } }, isFetching: false, isSuccess: true }) },
   };
   const runtime = { require: name => imports[name] ||
@@ -549,6 +550,88 @@ test('existing account resumes the chosen map checkout after normal login', asyn
   assert.equal(f.routes[0], 'https://stripe.test/existing');
 });
 
+test('automatic checkout hides the purchase card before effects and through Stripe navigation', async () => {
+  const options = { accessToken: 'token', params: { mapId, resume: '1' }, profileLoading: true, profile: { purchasedMaps: [] },
+    responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/direct' } } } };
+  const f = ui('components/Common/maps/map-checkout.tsx', options);
+  assert.equal(find(f.render(), 'section'), undefined);
+  assert.equal(find(f.render(), 'main').props['aria-busy'], 'true');
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  options.profileLoading = false;
+  assert.equal(find(f.render(), 'section'), undefined);
+  await f.effects();
+  assert.equal(f.routes[0], 'https://stripe.test/direct');
+  assert.equal(find(f.render(), 'section'), undefined, 'no card flash while browser leaves for Stripe');
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+});
+
+test('failed automatic checkout reveals the error and allows an explicit retry', async () => {
+  const options = { accessToken: 'token', params: { mapId, resume: '1' }, profile: { purchasedMaps: [] },
+    errors: { useCreateMapCheckoutSessionMutation: { message: 'Payment server unavailable' } } };
+  const f = ui('components/Common/maps/map-checkout.tsx', options);
+  assert.equal(find(f.render(), 'section'), undefined);
+  await f.effects();
+  const tree = f.render();
+  assert.ok(find(tree, 'section'));
+  assert.ok(nodes(tree).some(node => node.props?.role === 'alert' && node.props.children === 'Payment server unavailable'));
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+  delete options.errors.useCreateMapCheckoutSessionMutation;
+  options.responses = { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/retry' } } };
+  find(f.render(), 'form').props.onSubmit({ preventDefault() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 2);
+  assert.equal(f.routes[0], 'https://stripe.test/retry');
+});
+
+test('cold map/profile loading and delayed Stripe response never reveal the purchase card', async () => {
+  let resolvePayment;
+  const waiting = new Promise(resolve => { resolvePayment = resolve; });
+  const options = { accessToken: 'token', params: { mapId, resume: '1' }, mapLoading: true, profileLoading: true,
+    mutationWait: { useCreateMapCheckoutSessionMutation: waiting },
+    responses: { useCreateMapCheckoutSessionMutation: { data: { url: 'https://stripe.test/delayed' } } } };
+  const f = ui('components/Common/maps/map-checkout.tsx', options);
+  assert.equal(find(f.render(), 'section'), undefined);
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  options.mapLoading = false;
+  assert.equal(find(f.render(), 'section'), undefined);
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+  options.profileLoading = false;
+  options.profile = { purchasedMaps: [] };
+  assert.equal(find(f.render(), 'section'), undefined);
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+  assert.equal(f.routes.length, 0, 'Stripe request is still pending');
+  assert.equal(find(f.render(), 'section'), undefined);
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation.length, 1);
+  resolvePayment();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.routes[0], 'https://stripe.test/delayed');
+  assert.equal(find(f.render(), 'section'), undefined);
+});
+
+test('an unavailable map exits the automatic loading state without starting payment', async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { accessToken: 'token', params: { mapId, resume: '1' },
+    mapUnavailable: true, mapError: true, profile: { purchasedMaps: [] } });
+  const tree = f.render();
+  assert.ok(nodes(tree).some(node => node.props?.role === 'alert' && node.props.children === 'Map unavailable.'));
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+});
+
+test('cancelled checkout shows the card and waits for an explicit retry even with resume set', async () => {
+  const f = ui('components/Common/maps/map-checkout.tsx', { accessToken: 'token',
+    params: { mapId, resume: '1', cancelled: '1' }, profile: { purchasedMaps: [] } });
+  assert.ok(find(f.render(), 'form'));
+  await f.effects();
+  assert.equal(f.calls.useCreateMapCheckoutSessionMutation, undefined);
+});
+
 test('Buy Now signup and OTP persist login then immediately start payment for the selected map', async () => {
   const buy = ui('components/Common/maps/feature-map-detail.tsx');
   await find(buy.render(), 'button').props.onClick();
@@ -859,10 +942,10 @@ test('passwordless purchase account login shows setup guidance without pretendin
   assert.equal(url.searchParams.get('email'), 'buyer@example.test');
   assert.equal(url.searchParams.get('redirect'), redirect);
 });
-test('login offers email verification before any password needs to be entered', () => {
+test('ordinary login omits the removed general password-setup link', () => {
   const f = ui('components/auth/Login-form.tsx', { exportName: 'LoginForm', params: { email: 'buyer@example.test' } });
   const link = nodes(f.render()).find(node => node.type === 'a' && node.props.children === 'auth.login_no_password_yet');
-  assert.equal(new URL(link.props.href, 'https://example.test').searchParams.get('email'), 'buyer@example.test');
+  assert.equal(link, undefined);
   assert.equal(f.calls.useLoginMutation, undefined);
 });
 test('incorrect existing password stays on login without verification redirect or authentication', async () => {
