@@ -126,7 +126,7 @@ test('notification search excludes hidden names in its query, before counting or
     mongoose: { Types: { ObjectId } },
     '../../helpers/mapAccessHelper': { getAccessibleMapIds: async () => ['owned', 'free'] },
     '../../helpers/paginationHelper': { paginationHelper: { calculatePagination: () => ({ page: 1, skip: 0, limit: 10, sortBy: 'createdAt', sortOrder: 'desc' }) } },
-    '../user/user.model': { User: { findById: () => chain({ interest: [] }) } },
+    '../user/user.model': { User: { findById: () => chain({ interest: [], createdAt: new Date('2026-01-01T00:00:00Z') }) } },
     './notification.model': { Notification: {
       find: q => { query = q; return chain([]) },
       countDocuments: async () => 0,

@@ -71,6 +71,30 @@ const locationSearchAccess = async (user: any) => {
   }
 }
 
+// Broadcasts belong to users who existed when the notification was created.
+// Reuse the same audience in lists, counters, stats and bulk actions.
+const getBroadcastAudienceQuery = async (userId: string) => {
+  const userDoc = await User.findById(userId).select('interest createdAt').lean()
+  if (!userDoc) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'User not found')
+  }
+  const userInterests = userDoc.interest || []
+  return {
+    userId: { $exists: false },
+    createdAt: { $gte: userDoc.createdAt || new Types.ObjectId(userId).getTimestamp() },
+    $or: [
+      {
+        targetAudience: {
+          $in: [TARGET_AUDIENCE.ALL_USER, TARGET_AUDIENCE.ACTIVE_USER],
+        },
+      },
+      ...(userInterests.length > 0
+        ? [{ interests: { $in: userInterests } }]
+        : []),
+    ],
+  }
+}
+
 const processNotificationTranslations = async (payload: any) => {
   if (payload.title) payload.title = await autoTranslateField(payload.title)
   if (payload.content) payload.content = await autoTranslateField(payload.content)
@@ -317,11 +341,11 @@ const getAllNotifications = async (
   // super_admin and admin see all notifications
   const restrictedRoles = ['user', 'map_editor']
   if (restrictedRoles.includes((user as any).role)) {
+    const broadcastAudience = await getBroadcastAudienceQuery(user.authId)
     andConditions.push({
       $or: [
-        { userId: new Types.ObjectId((user as any).authId as string) },
-        { targetAudience: TARGET_AUDIENCE.ALL_USER },
-        { targetAudience: TARGET_AUDIENCE.ACTIVE_USER },
+        { userId: new Types.ObjectId(user.authId) },
+        broadcastAudience,
       ],
     })
   }
@@ -454,8 +478,7 @@ const markAllAsRead = async (
   options?: { category?: string; type?: NotificationType },
 ): Promise<{ modifiedCount: number }> => {
   const userObjectId = new Types.ObjectId(userId)
-  const userDoc = await User.findById(userId).select('interest').lean()
-  const userInterests = userDoc?.interest || []
+  const broadcastAudience = await getBroadcastAudienceQuery(userId)
 
   const personalQuery: any = {
     userId: userObjectId,
@@ -464,19 +487,9 @@ const markAllAsRead = async (
   }
 
   const broadcastQuery: any = {
-    userId: { $exists: false },
     readBy: { $ne: userObjectId },
     archivedBy: { $ne: userObjectId },
-    $or: [
-      {
-        targetAudience: {
-          $in: [TARGET_AUDIENCE.ALL_USER, TARGET_AUDIENCE.ACTIVE_USER],
-        },
-      },
-      ...(userInterests.length > 0
-        ? [{ interests: { $in: userInterests } }]
-        : []),
-    ],
+    ...broadcastAudience,
   }
 
   if (options?.category && options.category !== 'all') {
@@ -566,13 +579,14 @@ const clearMyNotifications = async (
   options?: { category?: string; type?: NotificationType; onlyRead?: boolean },
 ): Promise<{ clearedCount: number }> => {
   const userObjectId = new Types.ObjectId(userId)
+  const broadcastAudience = await getBroadcastAudienceQuery(userId)
 
   const personalQuery: any = {
     userId: userObjectId,
     isArchived: false,
   }
   const broadcastQuery: any = {
-    userId: { $exists: false },
+    ...broadcastAudience,
     archivedBy: { $ne: userObjectId },
   }
 
@@ -613,8 +627,7 @@ const clearMyNotifications = async (
 
 const getUnreadCount = async (userId: string): Promise<IUnreadCountResponse> => {
   const userObjectId = new Types.ObjectId(userId)
-  const userDoc = await User.findById(userId).select('interest').lean()
-  const userInterests = userDoc?.interest || []
+  const broadcastAudience = await getBroadcastAudienceQuery(userId)
 
   const unreadBaseQuery = {
     $or: [
@@ -624,19 +637,9 @@ const getUnreadCount = async (userId: string): Promise<IUnreadCountResponse> => 
         isArchived: { $ne: true },
       },
       {
-        userId: { $exists: false },
         readBy: { $ne: userObjectId },
         archivedBy: { $ne: userObjectId },
-        $or: [
-          {
-            targetAudience: {
-              $in: [TARGET_AUDIENCE.ALL_USER, TARGET_AUDIENCE.ACTIVE_USER],
-            },
-          },
-          ...(userInterests.length > 0
-            ? [{ interests: { $in: userInterests } }]
-            : []),
-        ],
+        ...broadcastAudience,
       },
     ],
   }
@@ -693,25 +696,14 @@ const getNotificationStats = async (
   if (restrictedRoles.includes(user.role as string) && user.authId) {
     const unreadData = await getUnreadCount(user.authId)
     const userObjectId = new Types.ObjectId(user.authId)
-    const userDoc = await User.findById(user.authId).select('interest').lean()
-    const userInterests = userDoc?.interest || []
+    const broadcastAudience = await getBroadcastAudienceQuery(user.authId)
 
     const baseQuery = {
       $or: [
         { userId: userObjectId, isArchived: false },
         {
-          userId: { $exists: false },
           archivedBy: { $ne: userObjectId },
-          $or: [
-            {
-              targetAudience: {
-                $in: [TARGET_AUDIENCE.ALL_USER, TARGET_AUDIENCE.ACTIVE_USER],
-              },
-            },
-            ...(userInterests.length > 0
-              ? [{ interests: { $in: userInterests } }]
-              : []),
-          ],
+          ...broadcastAudience,
         },
       ],
     }
@@ -807,8 +799,7 @@ const getMyNotifications = async (
     paginationHelper.calculatePagination(pagination)
 
   const userObjectId = new Types.ObjectId(user.authId)
-  const userDoc = await User.findById(user.authId).select('interest').lean()
-  const userInterests = userDoc?.interest || []
+  const broadcastAudience = await getBroadcastAudienceQuery(user.authId)
 
   const isReadFilter =
     filterables.isRead !== undefined && filterables.isRead !== ''
@@ -830,18 +821,8 @@ const getMyNotifications = async (
   }
 
   const broadcastAudienceQuery: any = {
-    userId: { $exists: false },
     archivedBy: isArchivedFilter ? userObjectId : { $ne: userObjectId },
-    $or: [
-      {
-        targetAudience: {
-          $in: [TARGET_AUDIENCE.ALL_USER, TARGET_AUDIENCE.ACTIVE_USER],
-        },
-      },
-      ...(userInterests.length > 0
-        ? [{ interests: { $in: userInterests } }]
-        : []),
-    ],
+    ...broadcastAudience,
   }
   if (isReadFilter !== undefined) {
     if (isReadFilter) {
