@@ -110,6 +110,7 @@ test('unchecking always-open survives a parent render and saves the unchecked va
   const utils = load('../frontend_giovafilm_roadtripeado/lib/utils.ts', { '@/lib/config': { env: {} } })
   const { PlaceFormContent } = load('../frontend_giovafilm_roadtripeado/components/dashboard/places/PlaceFormContent.tsx', {
     react: { ...react, default: react }, './place-payload': payload, '@/lib/place-schedule': schedule,
+    '@/lib/place-operating-hours': load('../frontend_giovafilm_roadtripeado/lib/place-operating-hours.ts'),
     '@/lib/utils': utils,
     '@/lib/i18n/LanguageContext': { useLanguage: () => ({ language: 'en', t: key => key }) },
     'motion/react': { motion: { div: 'div' } },

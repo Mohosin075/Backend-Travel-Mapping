@@ -3,7 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 import catchAsync from '../../shared/catchAsync'
 import sendResponse from '../../shared/sendResponse'
 import { PlaceService } from './place.service'
-import { getUserFromToken, getAccessibleMapIds, verifyEditorEditAccess } from '../../helpers/mapAccessHelper'
+import { getUserFromToken, getAccessibleMapIds, verifyEditorEditAccess, verifyEditorBusinessAccess } from '../../helpers/mapAccessHelper'
 import ApiError from '../../errors/ApiError'
 import { getCoordinatesFromUrl } from '../../utils/mapHelper'
 import { USER_ROLES } from '../../enum/user'
@@ -157,7 +157,9 @@ const updatePlace = catchAsync(async (req: Request, res: Response) => {
 
   // A place must belong to a map, verify access to the existing map
   const mapId = existingPlace.map?._id || existingPlace.map
-  if (mapId) {
+  if (existingPlace.sourceCollection === 'business') {
+    await verifyEditorBusinessAccess(user, existingPlace.country)
+  } else if (mapId) {
     await verifyEditorEditAccess(user, mapId.toString())
   }
   

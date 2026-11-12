@@ -21,6 +21,14 @@ const BusinessSchema = new Schema<IBusiness, BusinessModel>(
       type: Schema.Types.Mixed,
       required: true,
     },
+    access: { type: Schema.Types.Mixed },
+    accessibility: {
+      features: { type: [String], default: [] },
+      notes: { type: Schema.Types.Mixed },
+    },
+    recommendations: { tips: { type: Schema.Types.Mixed } },
+    services: { type: [String], default: [] },
+    atmosphere: { type: Schema.Types.Mixed },
     contact: {
       phone: { type: String, required: true },
       website: { type: String },

@@ -14,6 +14,11 @@ export interface IBusiness {
   name: TranslatableString
   category: Types.ObjectId // Ref to Category
   description: TranslatableString
+  access?: TranslatableString
+  accessibility?: { features: string[]; notes?: TranslatableString }
+  recommendations?: { tips?: TranslatableString }
+  services?: string[]
+  atmosphere?: TranslatableString
   contact: {
     phone: string
     website?: string

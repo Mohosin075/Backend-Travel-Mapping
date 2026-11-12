@@ -1,6 +1,7 @@
 import { StatusCodes } from 'http-status-codes'
 import ApiError from '../../errors/ApiError'
 import { IPlace } from './place.interface'
+import { inactivePlaceFields, scopePlaceFields } from './place.fields'
 import { Place } from './place.model'
 import { Map } from '../map/map.model'
 import { Category } from '../category/category.model'
@@ -197,6 +198,7 @@ const toNumber = (value: unknown): number => {
 }
 
 const createPlace = async (payload: IPlace): Promise<IPlace> => {
+  payload = scopePlaceFields(payload, payload.type || 'Regular') as IPlace
   await processPlaceTranslations(payload)
 
   // 1. Resolve map and align country to designated map (prevents incorrect country when adding places)
@@ -875,6 +877,7 @@ const getPlaceById = async (id: string): Promise<any | null> => {
       _id: business._id.toString(),
       type: 'Business',
       placeType: 'Business',
+      sourceCollection: 'business',
       status: placeStatus,
       media: (business.media?.photos || []).filter(Boolean),
       menuImages: business.media?.menu ? [business.media.menu] : [],
@@ -918,6 +921,10 @@ const updatePlace = async (
     if (!isBusiness) {
       throw new ApiError(StatusCodes.NOT_FOUND, 'Place not found')
     }
+    if (payload.type && payload.type !== 'Business') {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'Registered businesses must keep their Business type')
+    }
+    payload = scopePlaceFields(payload, 'Business')
     await processPlaceTranslations(payload, isBusiness)
 
     // Map payload from Place structure back to Business schema format
@@ -925,6 +932,9 @@ const updatePlace = async (
     if (payload.name) businessPayload.name = payload.name
     if (payload.category) businessPayload.category = payload.category
     if (payload.description) businessPayload.description = payload.description
+    for (const key of ['access', 'accessibility', 'recommendations', 'services', 'atmosphere'] as const) {
+      if (payload[key] !== undefined) businessPayload[key] = payload[key]
+    }
     
     // Address & coordinates mapping
     if (payload.address || payload.location?.coordinates) {
@@ -947,20 +957,23 @@ const updatePlace = async (
         photos: payload.media,
       }
     }
-    if (payload.menuImages && payload.menuImages.length > 0) {
+    if (payload.menuImages !== undefined) {
+      if (payload.menuImages.length > 1) {
+        throw new ApiError(StatusCodes.BAD_REQUEST, 'Registered businesses support one menu file')
+      }
       businessPayload.media = {
         ...(businessPayload.media || isBusiness.media || {}),
-        menu: payload.menuImages[0], // Business schema holds a single string for menu
+        menu: payload.menuImages[0] || '',
       }
     }
 
     // Phone, website, instagram
-    if (payload.phone || payload.website || payload.instagram) {
+    if (payload.phone !== undefined || payload.website !== undefined || payload.instagram !== undefined) {
       businessPayload.contact = {
         ...(isBusiness.contact || {}),
-        ...(payload.phone && { phone: payload.phone }),
-        ...(payload.website && { website: payload.website }),
-        ...(payload.instagram && { instagram: payload.instagram }),
+        ...(payload.phone !== undefined && { phone: payload.phone }),
+        ...(payload.website !== undefined && { website: payload.website }),
+        ...(payload.instagram !== undefined && { instagram: payload.instagram }),
       }
     }
 
@@ -994,6 +1007,7 @@ const updatePlace = async (
         ...updatedBusiness.toObject(),
         type: 'Business',
         placeType: 'Business',
+        sourceCollection: 'business',
         status: placeStatus,
         media: (updatedBusiness.media?.photos || []).filter(Boolean),
         menuImages: updatedBusiness.media?.menu ? [updatedBusiness.media.menu] : [],
@@ -1004,11 +1018,17 @@ const updatePlace = async (
           coordinates: updatedBusiness.location?.mapLocation?.coordinates || [],
         },
         map: { name: updatedBusiness.location?.country },
+        operatingHours: updatedBusiness.hours?.schedule || null,
+        phone: updatedBusiness.contact?.phone || '',
+        website: updatedBusiness.contact?.website || '',
+        instagram: updatedBusiness.contact?.instagram || '',
       }
     }
     return null
   }
 
+  const effectiveType = payload.type || isExist.type || 'Regular'
+  payload = scopePlaceFields(payload, effectiveType)
   await processPlaceTranslations(payload, isExist)
 
   const nextCoords = payload.location?.coordinates
@@ -1070,14 +1090,12 @@ const updatePlace = async (
       payload.media = nextMedia.length > 0 ? nextMedia : isExist.media
     }
 
-    const nextMenu = Array.isArray(payload.menuImages)
-      ? payload.menuImages.filter(Boolean)
-      : undefined
-    if (nextMenu) {
-      payload.menuImages = nextMenu.length > 0 ? nextMenu : isExist.menuImages
-    }
+    if (Array.isArray(payload.menuImages)) payload.menuImages = payload.menuImages.filter(Boolean)
 
-    const result = await Place.findByIdAndUpdate(id, payload, {
+    const result = await Place.findByIdAndUpdate(id, {
+      $set: payload,
+      $unset: Object.fromEntries(inactivePlaceFields(effectiveType).map(key => [key, 1])),
+    }, {
       new: true,
       runValidators: true,
       session,
