@@ -19,7 +19,7 @@ passport.use(
       try {
         const isUserExist = await User.findOne({
           email: email.trim().toLowerCase(),
-          status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE] },
+          status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.DELETED] },
         })
           .select('+password +authentication')
           .lean()

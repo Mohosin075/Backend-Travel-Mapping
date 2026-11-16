@@ -21,13 +21,14 @@ const createUser = async (payload: IUser) => {
   payload.email = payload.email?.toLowerCase().trim()
   const isUserExist = await User.findOne({
     email: payload.email,
-    status: { $nin: [USER_STATUS.DELETED] },
   })
 
   if (isUserExist) {
     throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      `An account with this email already exist, please login or try with another email.`,
+      StatusCodes.CONFLICT,
+      isUserExist.status === USER_STATUS.DELETED
+        ? 'This account has been deleted. Please contact support or use another email.'
+        : 'An account with this email already exists. Please log in or use another email.',
     )
   }
 
@@ -51,8 +52,6 @@ const createUser = async (payload: IUser) => {
     otp,
   })
 
-  emailHelper.sendEmail(createAccount)
-
   const user = await User.create({
     ...payload,
     password: payload.password,
@@ -62,6 +61,9 @@ const createUser = async (payload: IUser) => {
   if (!user) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Failed to create user.')
   }
+
+  // Do not send a signup code for an insert that failed (including duplicate races).
+  void emailHelper.sendEmail(createAccount)
 
   return {
     success: true,
@@ -78,7 +80,7 @@ const customLogin = async (payload: ILoginData): Promise<IAuthResponse> => {
 
   const isUserExist = await User.findOne({
     ...query,
-    status: { $in: [USER_STATUS.ACTIVE] },
+    status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.DELETED] },
   })
     .select('+password +authentication')
     .lean()
@@ -87,6 +89,15 @@ const customLogin = async (payload: ILoginData): Promise<IAuthResponse> => {
       StatusCodes.BAD_REQUEST,
       `No account found with this ${email ? 'email' : 'phone'}`,
     )
+  }
+
+  if (isUserExist.status === USER_STATUS.DELETED) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.')
+  }
+
+  // This endpoint previously accepted active accounts only. Keep that policy.
+  if (isUserExist.status === USER_STATUS.INACTIVE) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'Your account is inactive. Please contact support.')
   }
 
   if (!isUserExist.password && isUserExist.provider !== 'guest_purchase') {
@@ -158,14 +169,18 @@ const forgetPassword = async (email?: string, phone?: string) => {
     : { phone: phone }
   const isUserExist = await User.findOne({
     ...query,
-    status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE] },
+    status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.DELETED] },
   })
 
   if (!isUserExist) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      'No account found with this email or phone',
+      `No account found with this ${email ? 'email' : 'phone'}. Please check it or create an account.`,
     )
+  }
+
+  if (isUserExist.status === USER_STATUS.DELETED) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.')
   }
 
   const otp = generateOtp()
@@ -668,13 +683,17 @@ const resendOtp = async (
 ) => {
   const isUserExist = await User.findOne({
     email: email.toLowerCase().trim(),
-    status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE] },
+    status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.INACTIVE, USER_STATUS.DELETED] },
   }).select('+password +authentication')
   if (!isUserExist) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      `No account found with this ${email}, please try again.`,
+      'No account found with this email. Please check it or create an account.',
     )
+  }
+
+  if (isUserExist.status === USER_STATUS.DELETED) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.')
   }
 
   const { authentication } = isUserExist

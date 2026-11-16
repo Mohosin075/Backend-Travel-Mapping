@@ -27,7 +27,14 @@ const globalErrorHandler: ErrorRequestHandler = (
   let message = 'Something went wrong!'
   let errorMessages: IGenericErrorMessage[] = []
 
-  if (error?.name === 'validationError') {
+  if (error?.code === 11000) {
+    const field = Object.keys(error.keyPattern || error.keyValue || {})[0] || ''
+    statusCode = 409
+    message = field === 'email'
+      ? 'An account with this email already exists. Please log in or use another email.'
+      : 'A record with these details already exists. Please use different details.'
+    errorMessages = [{ path: field, message }]
+  } else if (error?.name === 'ValidationError' || error?.name === 'validationError') {
     const simplifiedError = handleValidationError(error)
     statusCode = simplifiedError.statusCode
     message = simplifiedError.errorMessages[0]?.message || message
@@ -62,7 +69,7 @@ const globalErrorHandler: ErrorRequestHandler = (
     success: false,
     message: localizedMessage,
     errorMessages: localizedErrorMessages,
-    stack: config.node_env === 'production' ? undefined : error?.stack,
+    stack: config.node_env === 'production' || error?.code === 11000 ? undefined : error?.stack,
   })
 }
 

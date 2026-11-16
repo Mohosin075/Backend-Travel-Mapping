@@ -45,9 +45,9 @@ function query(value) {
 }
 class ApiError extends Error { constructor(status, message) { super(message); this.statusCode = status; } }
 const enums = { USER_STATUS: { ACTIVE: 'active', INACTIVE: 'inactive', DELETED: 'deleted' }, USER_ROLES: { USER: 'user' } };
-function load(file, imports) {
+function load(file, imports, source) {
   const module = { exports: {} };
-  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
+  vm.runInNewContext(ts.transpileModule(source ?? fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
   }).outputText, { module, exports: module.exports, require: name => imports[name] || (name.startsWith('.') ? {} : require(name)),
     console: { log() {}, error() {}, warn() {} }, Date, Buffer, URL, process: { env: { NODE_ENV: 'production' } } });
@@ -289,12 +289,19 @@ test('simultaneous paid promo requests share one chargeable session and order', 
   assert.equal(f.state.payments.length, 1);
 });
 
+const baselineSources = new Map();
+function baselineSource(file) {
+  if (!baselineSources.has(file)) baselineSources.set(file, require('node:child_process').execFileSync(
+    'git', ['show', `HEAD:${file}`], { cwd: path.resolve(__dirname, '..'), encoding: 'utf8', windowsHide: true }));
+  return baselineSources.get(file);
+}
 function authFixture(options = {}) {
   const state = { user: { _id: userId, email: 'buyer@example.test', role: 'user', name: 'Buyer', status: 'active',
     password: 'hash', verified: false, authentication: { oneTimeCode: '123456', expiresAt: new Date(Date.now() + 60000),
       authType: 'createAccount', wrongLoginAttempts: 0, requestCount: 0 }, ...options.user }, tokens: [], resets: [], emails: [] };
   const userModel = {
-    findOne: () => query(clone(state.user)), findById: () => query(clone(state.user)),
+    findOne: filter => query(matches(state.user, filter) ? clone(state.user) : null), findById: () => query(clone(state.user)),
+    create: async payload => { if (options.createError) throw options.createError; state.user = { _id: userId, ...clone(payload) }; return state.user; },
     findByIdAndUpdate: async (_id, changes) => clone(update(state.user, changes)),
     findOneAndUpdate: async (filter, changes) => matches(state.user, filter) ? clone(update(state.user, changes)) : null,
     isPasswordMatched: async password => password === 'correctpass',
@@ -302,13 +309,14 @@ function authFixture(options = {}) {
   const helpers = { createToken: (...args) => { state.tokens.push(args); return { accessToken: 'access', refreshToken: 'refresh' }; } };
   const response = (status, message, role, accessToken, refreshToken, token, needPassword) => ({ status, message, role, accessToken, refreshToken, token, needPassword });
   const email = { sendEmail: async data => state.emails.push(data) };
-  const templates = { createAccount: value => value, userInvitation: value => value, resetPassword: value => value };
-  const common = load('src/modules/auth/common.ts', {
+  const templates = { createAccount: value => value, userInvitation: value => value, resetPassword: value => value, resendOtp: value => value };
+  const loadAuth = (file, imports) => load(file, imports, options.reference ? baselineSource(file) : undefined);
+  const common = loadAuth('src/modules/auth/common.ts', {
     '../../enum/user': enums, '../user/user.model': { User: userModel }, './auth.helper': { AuthHelper: helpers },
     '../../errors/ApiError': ApiError, '../../utils/crypto': { generateOtp: () => '654321' },
     '../../shared/emailTemplate': { emailTemplate: templates }, '../../helpers/emailHelper': { emailHelper: email },
   });
-  const custom = load('src/modules/auth/custom.auth/custom.auth.service.ts', {
+  const custom = loadAuth('src/modules/auth/custom.auth/custom.auth.service.ts', {
     '../../../enum/user': enums, '../../user/user.model': { User: userModel }, '../auth.helper': { AuthHelper: helpers },
     '../../../errors/ApiError': ApiError, '../../../config': { bcrypt_salt_rounds: '10', jwt: { jwt_refresh_secret: 'test' } },
     '../common': { authResponse: response, AuthCommonServices: common.AuthCommonServices },
@@ -562,4 +570,78 @@ test('inactive Google account cannot bypass its status by social login or create
   }).PassportAuthServices;
   await assert.rejects(service.handleGoogleLogin({ profile: { emails: [{ value: 'buyer@example.test' }], id: 'google' } }), /not active/);
   assert.equal(created + issued, 0);
+});
+
+for (const status of ['active', 'inactive', 'deleted']) test(`signup existing ${status} email gives a friendly conflict without sending OTP`, async () => {
+  const f = authFixture({ user: { status } });
+  await assert.rejects(f.service.createUser({ email: ' BUYER@EXAMPLE.TEST ', password: 'correctpass' }),
+    error => error.statusCode === 409 && /already exists|has been deleted/.test(error.message));
+  assert.equal(f.state.emails.length, 0);
+});
+
+test('signup database race sends no OTP when the unique insert fails', async () => {
+  const f = authFixture({ createError: Object.assign(new Error('duplicate'), { code: 11000 }) });
+  f.state.user = null;
+  await assert.rejects(f.service.createUser({ email: 'new@example.test', password: 'correctpass' }), error => error.code === 11000);
+  assert.equal(f.state.emails.length, 0);
+});
+
+test('successful signup persists user before sending its verification code', async () => {
+  const f = authFixture(); f.state.user = null;
+  const result = await f.service.createUser({ email: ' NEW@EXAMPLE.TEST ', password: 'correctpass' });
+  assert.equal(result.data.email, 'new@example.test');
+  assert.equal(f.state.emails.length, 1);
+  assert.equal(f.state.user.authentication.oneTimeCode, '654321');
+});
+
+for (const method of ['customLogin', 'forgetPassword']) test(`${method}: deleted email is not misreported as a missing account`, async () => {
+  const f = authFixture({ user: { status: 'deleted' } });
+  await assert.rejects(f.service[method](method === 'customLogin' ? { email: f.state.user.email, password: 'correctpass' } : f.state.user.email),
+    error => error.statusCode === 403 && /has been deleted/.test(error.message));
+  assert.equal(f.state.tokens.length + f.state.emails.length, 0);
+});
+
+for (const [label, until, expectedStatus] of [
+  ['temporarily locked', new Date(Date.now() + 60000), 403],
+  ['administratively inactive', null, 403],
+]) test(`custom login reports ${label} instead of missing account and issues no token`, async () => {
+  const f = authFixture({ user: { status: 'inactive', verified: true, authentication: { restrictionLeftAt: until, wrongLoginAttempts: 5 } } });
+  await assert.rejects(f.service.customLogin({ email: f.state.user.email, password: 'correctpass' }), error => error.statusCode === expectedStatus);
+  assert.equal(f.state.tokens.length, 0);
+  assert.equal(f.state.user.status, 'inactive');
+});
+
+test('web resend OTP reports deleted account without sending another code', async () => {
+  const f = authFixture({ user: { status: 'deleted' } });
+  await assert.rejects(f.service.resendOtp(f.state.user.email, 'createAccount'), error => error.statusCode === 403 && /has been deleted/.test(error.message));
+  assert.equal(f.state.emails.length, 0);
+});
+
+
+function flowSnapshot(f, result) {
+  return JSON.stringify({ result, user: f.state.user, tokens: f.state.tokens, resets: f.state.resets, emails: f.state.emails })
+    .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, '<timestamp>');
+}
+const preservedFlows = [
+  ['verified password login', { verified: true }, f => f.service.customLogin({ email: f.state.user.email, password: 'correctpass', rememberMe: true })],
+  ['unverified signup login to OTP', {}, f => f.service.customLogin({ email: f.state.user.email, password: 'correctpass' })],
+  ['passwordless purchase account setup', { provider: 'guest_purchase', password: undefined, purchasedMaps: [mapId] }, f => f.service.customLogin({ email: f.state.user.email, password: 'unused' })],
+  ['passwordless invitation login to OTP', { password: undefined }, f => f.common.handleLoginLogic({ password: 'unused' }, clone(f.state.user))],
+  ['signup verification to access/refresh tokens', {}, f => f.service.verifyAccount(f.state.user.email, '123456')],
+  ['invitation verification to first-password setup', { password: undefined }, f => f.service.verifyAccount(f.state.user.email, '123456')],
+  ['forgotten password through OTP and password reset', { verified: true, purchasedMaps: [mapId] }, async f => {
+    await f.service.forgetPassword(f.state.user.email);
+    const otp = await f.service.verifyAccount(f.state.user.email, '654321');
+    return f.service.resetPassword(otp.token, { newPassword: 'correctpass', confirmPassword: 'correctpass' });
+  }],
+  ['resend signup OTP then verify', {}, async f => { await f.service.resendOtp(f.state.user.email, 'createAccount'); return f.service.verifyAccount(f.state.user.email, '654321'); }],
+  ['expired temporary restriction on web login', { verified: true, status: 'inactive', authentication: { restrictionLeftAt: new Date(0), wrongLoginAttempts: 5 } }, f => f.common.handleLoginLogic({ password: 'correctpass' }, clone(f.state.user))],
+  ['existing web login policy for inactive account without restriction date', { verified: true, status: 'inactive', authentication: { restrictionLeftAt: null, wrongLoginAttempts: 0 } }, f => f.common.handleLoginLogic({ password: 'correctpass' }, clone(f.state.user))],
+  ['new account registration response and verification code', {}, async f => { f.state.user = null; return f.service.createUser({ email: ' NEW@EXAMPLE.TEST ', password: 'correctpass' }); }],
+];
+for (const [name, user, run] of preservedFlows) test(`production compatibility: ${name} matches pre-change code`, async () => {
+  const original = authFixture({ user, reference: true });
+  const current = authFixture({ user });
+  const before = await run(original), after = await run(current);
+  assert.equal(flowSnapshot(current, after), flowSnapshot(original, before));
 });

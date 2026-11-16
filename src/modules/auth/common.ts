@@ -15,14 +15,16 @@ const handleLoginLogic = async (
   payload: ILoginData,
   isUserExist: IUser,
 ): Promise<IAuthResponse> => {
-  const { authentication, verified, status, password } = isUserExist
+  const { verified, status, password } = isUserExist
+  const authentication = isUserExist.authentication || {} as IUser['authentication']
+  isUserExist.authentication = authentication
 
-  const { restrictionLeftAt, wrongLoginAttempts } = authentication
+  const { restrictionLeftAt, wrongLoginAttempts = 0 } = authentication
 
   if (status === USER_STATUS.DELETED) {
     throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      'No account found with this email',
+      StatusCodes.FORBIDDEN,
+      'This account has been deleted. Please contact support or use another email.',
     )
   }
 
