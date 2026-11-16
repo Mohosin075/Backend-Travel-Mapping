@@ -7,6 +7,7 @@ import { emailTemplate } from '../../shared/emailTemplate'
 import { User } from '../user/user.model'
 import stripe from '../../config/stripe'
 import { PromoLink } from '../promo/promo.model'
+import { applyStripeCheckoutTotals, applyStripeIntentTotal } from '../../helpers/stripePaymentTotals'
 
 const handleCheckoutSessionCompleted = async (
   sessionData: any,
@@ -54,12 +55,22 @@ const handleCheckoutSessionCompleted = async (
       }
 
       // Check if already processed to avoid duplicates
-      if (payment.status === 'succeeded' || payment.status === 'refunded') {
+      if (payment.status === 'refunded') {
+        await mongoSession.commitTransaction()
+        return
+      }
+
+      if (payment.status === 'succeeded') {
+        const changed = applyStripeCheckoutTotals(payment, sessionWithDetails)
+        const intentChanged = payment.paymentIntentId !== lookupId
+        payment.paymentIntentId = lookupId
+        if (changed || intentChanged) await payment.save({ session: mongoSession })
         await mongoSession.commitTransaction()
         return
       }
 
       // Update payment
+      applyStripeCheckoutTotals(payment, sessionWithDetails)
       payment.status = 'succeeded'
       payment.paymentIntentId = lookupId
       payment.metadata = { ...payment.metadata, paymentIntentId: lookupId }
@@ -209,6 +220,7 @@ const handlePaymentSuccess = async (paymentIntent: any): Promise<void> => {
     }
 
     // Update payment
+    applyStripeIntentTotal(payment, paymentIntent)
     payment.status = 'succeeded'
     // Ensure we don't overwrite crucial metadata if it exists
     payment.metadata = { ...payment.metadata, ...paymentIntent }
@@ -303,6 +315,7 @@ const handleChargeRefunded = async (charge: any): Promise<void> => {
     })
 
     if (payment) {
+      applyStripeIntentTotal(payment, { amount: charge.amount, currency: charge.currency })
       payment.status = 'refunded'
       payment.refundAmount = charge.amount_refunded
         ? charge.amount_refunded / 100

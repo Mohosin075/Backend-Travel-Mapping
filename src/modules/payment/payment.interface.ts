@@ -13,6 +13,10 @@ export interface IPayment {
   mapId?: Types.ObjectId
   userEmail: string
   amount: number
+  subtotalAmount?: number
+  taxAmount?: number
+  discountAmount?: number
+  taxCountry?: string
   currency: string
   paymentMethod: 'stripe' | 'paypal' | 'bank_transfer'
   paymentIntentId: string

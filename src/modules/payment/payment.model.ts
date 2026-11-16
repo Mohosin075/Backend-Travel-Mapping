@@ -29,6 +29,10 @@ const paymentSchema = new Schema<IPayment, PaymentModel>(
       type: String,
       default: 'USD',
     },
+    subtotalAmount: { type: Number, min: 0 },
+    taxAmount: { type: Number, min: 0 },
+    discountAmount: { type: Number, min: 0 },
+    taxCountry: { type: String },
     paymentMethod: {
       type: String,
       enum: ['stripe'],

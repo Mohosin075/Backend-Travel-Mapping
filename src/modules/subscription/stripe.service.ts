@@ -1,5 +1,7 @@
 import Stripe from 'stripe'
 import config from '../../config'
+import ApiError from '../../errors/ApiError'
+import { StatusCodes } from 'http-status-codes'
 
 class StripeService {
   private stripe: Stripe
@@ -69,6 +71,10 @@ class StripeService {
     metadata?: Record<string, string>
   }): Promise<Stripe.Subscription> {
     try {
+      if (config.stripe?.automaticTaxEnabled) {
+        throw new ApiError(StatusCodes.BAD_REQUEST,
+          'Please use subscription Checkout so applicable tax can be calculated from your billing address.')
+      }
       const subscriptionParams: Stripe.SubscriptionCreateParams = {
         customer: params.customerId,
         items: [{ price: params.priceId }],
@@ -249,6 +255,11 @@ class StripeService {
   }): Promise<Stripe.Checkout.Session> {
     try {
       const sessionParams: Stripe.Checkout.SessionCreateParams = {
+        ...(config.stripe?.automaticTaxEnabled ? {
+          automatic_tax: { enabled: true },
+          billing_address_collection: 'required',
+          customer_update: { address: 'auto' },
+        } : {}),
         customer: params.customerId,
         payment_method_types: ['card'],
         line_items: [
@@ -357,6 +368,7 @@ class StripeService {
   }): Promise<Stripe.Price> {
     try {
       const price = await this.stripe.prices.create({
+        ...(config.stripe?.automaticTaxEnabled ? { tax_behavior: 'exclusive' as const } : {}),
         product: params.productId,
         unit_amount: params.unitAmount,
         currency: params.currency,

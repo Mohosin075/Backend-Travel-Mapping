@@ -135,3 +135,20 @@ test('report exports preserve quotes/newlines in CSV cells and render stored nam
  const html=`<td>${htmlText(name)}</td>`;
  assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;'));
 });
+
+
+test('sales reports sum actual tax amounts instead of applying a fixed percentage', async () => {
+ const current=new Date();
+ const rows=[{amount:38.15,taxAmount:3.15,createdAt:current},{amount:35,taxAmount:0,createdAt:current},{amount:10,createdAt:current}];
+ const report=await service({'../payment/payment.model':{Payment:{find:()=>chain(rows)}}}).getReportsData();
+ assert.equal(report.salesAndTaxes.taxesCollected,3.15);
+ assert.equal(Math.round(report.salesAndTaxes.totalSales*100),8315);
+ assert.equal(report.salesAndTaxes.netRevenue,80);
+ assert.equal(report.salesAndTaxes.monthlyData.reduce((sum,month)=>sum+month.taxes,0),3.15);
+});
+
+test('legacy orders without saved tax do not acquire invented taxes', async () => {
+ const report=await service().getReportsData();
+ assert.equal(report.salesAndTaxes.taxesCollected,0);
+ assert.ok(report.salesAndTaxes.monthlyData.every(month=>month.taxes===0));
+});

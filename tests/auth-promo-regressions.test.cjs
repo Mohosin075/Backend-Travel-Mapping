@@ -49,7 +49,7 @@ function load(file, imports, source) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(source ?? fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
-  }).outputText, { module, exports: module.exports, require: name => imports[name] || (name.startsWith('.') ? {} : require(name)),
+  }).outputText, { module, exports: module.exports, require: name => imports[name] || (name === '../../helpers/stripePaymentTotals' ? load('src/helpers/stripePaymentTotals.ts', {}) : (name.startsWith('.') ? {} : require(name))),
     console: { log() {}, error() {}, warn() {} }, Date, Buffer, URL, process: { env: { NODE_ENV: 'production' } } });
   return module.exports;
 }
@@ -644,4 +644,23 @@ for (const [name, user, run] of preservedFlows) test(`production compatibility: 
   const current = authFixture({ user });
   const before = await run(original), after = await run(current);
   assert.equal(flowSnapshot(current, after), flowSnapshot(original, before));
+});
+
+
+test('paid promo checkout enables address-based tax on the discounted server price', async () => {
+  const f = promoFixture({ promo: { price: 5 }, config: { stripe: { automaticTaxEnabled: true } } });
+  await f.service.createPromoCheckoutSession({ authId: userId }, 'PROMO');
+  const request = f.state.stripeCalls[0].request;
+  assert.equal(request.automatic_tax.enabled, true);
+  assert.equal(request.billing_address_collection, 'required');
+  assert.equal(request.line_items[0].price_data.unit_amount, 500);
+  assert.equal(request.line_items[0].price_data.tax_behavior, 'exclusive');
+  assert.equal(request.line_items[0].price_data.product_data.tax_code, undefined);
+});
+
+test('free promo stays free and does not start tax checkout', async () => {
+  const f = promoFixture({ config: { stripe: { automaticTaxEnabled: true } } });
+  await f.service.claimFreePromo(userId, 'PROMO');
+  assert.equal(f.state.stripeCalls.length, 0);
+  assert.equal(f.state.user.purchasedMaps[0], mapId);
 });

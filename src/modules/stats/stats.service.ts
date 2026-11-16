@@ -52,7 +52,7 @@ const getDashboardData = async (): Promise<IDashboardData> => {
     User.find().sort({ updatedAt: -1 }).limit(3).select('name role updatedAt').lean(),
     Payment.aggregate([
       { $match: { status: 'succeeded' } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
+      { $group: { _id: null, total: { $sum: '$amount' }, tax: { $sum: { $ifNull: ['$taxAmount', 0] } } } },
     ]),
     Payment.aggregate([
       { $match: { status: 'succeeded', createdAt: { $gte: startOfMonth } } },
@@ -67,7 +67,7 @@ const getDashboardData = async (): Promise<IDashboardData> => {
   // Report actual persisted revenue, including zero-sales periods.
   const totalSales = realTotalSales
   const thisMonthRevenue = realMonthSales
-  const taxesCollected = Math.round(totalSales * 0.10 * 100) / 100
+  const taxesCollected = Math.round((paymentsTotalAgg[0]?.tax || 0) * 100) / 100
 
   const recentActivity: IRecentActivity[] = []
 
@@ -466,10 +466,12 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
   const payments = await Payment.find(paymentFilter).lean()
 
   let totalSales = 0
+  let taxTotal = 0
   payments.forEach(p => {
     totalSales += p.amount || 0
+    taxTotal += p.taxAmount || 0
   })
-  const taxesCollected = Math.round(totalSales * 0.1 * 100) / 100
+  const taxesCollected = Math.round(taxTotal * 100) / 100
   const netRevenue = Math.round((totalSales - taxesCollected) * 100) / 100
 
   // Monthly sales & tax grouping
@@ -487,12 +489,13 @@ const getReportsData = async (query: Record<string, any> = {}): Promise<IReports
     const label = `${monthNames[date.getMonth()]} ${date.getFullYear()}`
     if (monthlyMap[label] !== undefined) {
       monthlyMap[label].totalSales += p.amount || 0
+      monthlyMap[label].taxes += p.taxAmount || 0
     }
   })
 
   const monthlyData = Object.keys(monthlyMap).map(month => {
     const data = monthlyMap[month]
-    const taxes = Math.round(data.totalSales * 0.1 * 100) / 100
+    const taxes = Math.round(data.taxes * 100) / 100
     const rev = Math.round((data.totalSales - taxes) * 100) / 100
     return {
       month,

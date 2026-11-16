@@ -25,7 +25,9 @@ test('business tracking uses one persisted counting path, including repeat visit
   let now = 100000
   class Clock extends Date { static now() { return now } }
   const { trackUsage } = load('../frontend_giovafilm_roadtripeado/lib/record-visit.ts', {
-    '@/redux/store': { default: { getState: () => ({ auth: { accessToken: 'valid-token', user: { id } } }) } },
+    '@/redux/store': { default: { getState: () => ({ auth: { accessToken: 'valid-token', user: { id } } }),
+      dispatch: request => { requests.push(request); return { unwrap: async () => ({}), reset() {} } } } },
+    '@/redux/features/stats/statsApi': { statsApi: { endpoints: { recordUsage: { initiate: payload => payload } } } },
     '@/lib/socket': { emitWhenReady: (...args) => sent.push(args) },
   }, {
     Date: Clock, document: { cookie: '' }, process: { env: { NEXT_PUBLIC_BASEURL: 'https://example.test/api/v1' } },
@@ -33,8 +35,8 @@ test('business tracking uses one persisted counting path, including repeat visit
     window: { localStorage: { getItem: () => 'visitor-id' }, sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
   })
   trackUsage('business', id); now += 30000; trackUsage('business', id)
-  assert.equal(sent.length, 2)
-  assert.equal(requests.length, 0, 'socket tracking must not also send an unconditional REST increment')
+  assert.equal(requests.length, 2)
+  assert.equal(sent.length, 0, 'successful REST tracking must not also increment over sockets')
 })
 
 test('empty payment records produce zero revenue in dashboard and reports', async () => {
@@ -45,8 +47,14 @@ test('empty payment records produce zero revenue in dashboard and reports', asyn
   }
   imports['../offer/offerRedemption.model'] = { OfferRedemption: empty }
   imports['./usageView.model'] = { UsageView: empty }
+  imports['../user/user.model'] = { User: { ...empty, collection: { name: 'users' } } }
+  imports['./usage-reporting'] = { rankedViewers: async () => [], distinctViewers: async () => [] }
+  imports['./recent-place-views'] = { recentPlaceViews: async () => [] }
   let payments = []
-  imports['../payment/payment.model'] = { Payment: { ...empty, find: () => chain(payments) } }
+  imports['../payment/payment.model'] = { Payment: { ...empty, find: () => chain(payments), aggregate: async () => [{
+    total: payments.reduce((sum, payment) => sum + payment.amount, 0),
+    tax: payments.reduce((sum, payment) => sum + (payment.taxAmount || 0), 0),
+  }] } }
   const { StatsService } = load('src/modules/stats/stats.service.ts', imports)
   const dashboard = await StatsService.getDashboardData()
   assert.equal(dashboard.stats.totalSales, 0)
@@ -55,9 +63,11 @@ test('empty payment records produce zero revenue in dashboard and reports', asyn
   assert.equal(report.salesAndTaxes.totalSales, 0)
   assert.equal(report.salesAndTaxes.taxesCollected, 0)
   assert.ok(report.salesAndTaxes.monthlyData.every(row => row.totalSales === 0))
-  payments = [{ amount: 45, createdAt: new Date() }]
+  payments = [{ amount: 45, taxAmount: 5, createdAt: new Date() }]
   const paid = await StatsService.getReportsData()
   assert.equal(paid.salesAndTaxes.totalSales, 45)
+  assert.equal(paid.salesAndTaxes.taxesCollected, 5)
+  assert.equal((await StatsService.getDashboardData()).stats.taxesCollected, 5)
 })
 
 test('editor cannot create a route containing an unassigned map, even if it was purchased', async () => {

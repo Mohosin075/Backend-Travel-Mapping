@@ -14,6 +14,7 @@ import { Payment } from './payment.model'
 import { PaymentServices } from './payment.service'
 import stripe from '../../config/stripe'
 import { getCheckoutReturnOrigin as getReturnOrigin } from '../../helpers/checkoutOrigin'
+import { checkoutMatchesPaymentTotal } from '../../helpers/stripePaymentTotals'
 
 const tokenSchema = z.string().regex(/^[a-f0-9]{64}$/)
 const startSchema = z.object({
@@ -86,7 +87,7 @@ const complete = catchAsync(async (req, res) => {
   const payment = await Payment.findOne({ 'metadata.checkoutSessionId': sessionId, userId: attempt.userId, mapId: attempt.mapId })
   if (!payment || session.payment_status !== 'paid' || session.status !== 'complete' ||
       session.metadata?.userId !== String(attempt.userId) || session.metadata?.mapId !== String(attempt.mapId) ||
-      session.amount_total !== Math.round(payment.amount * 100) || session.currency !== payment.currency.toLowerCase() ||
+      !checkoutMatchesPaymentTotal(payment, session) ||
       payment.status === 'refunded') {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Payment is not complete or is no longer available. Please retry or contact support.')
   }

@@ -210,13 +210,19 @@ const createPromoCheckoutSession = async (
   }
 
   const session = await stripe.checkout.sessions.create({
+    ...(config.stripe?.automaticTaxEnabled ? {
+      automatic_tax: { enabled: true },
+      billing_address_collection: 'required',
+    } : {}),
     expires_at: Math.floor(reservation.checkoutExpiresAt!.getTime() / 1000),
     payment_method_types: ['card'],
     line_items: [
       {
         price_data: {
+          ...(config.stripe?.automaticTaxEnabled ? { tax_behavior: 'exclusive' as const } : {}),
           currency,
           product_data: {
+            ...(config.stripe?.automaticTaxEnabled && config.stripe.taxCode ? { tax_code: config.stripe.taxCode } : {}),
             name: `Map Upgrade: ${typeof map.name === 'object' ? map.name.en || map.name.es : map.name}`,
             description: `Exclusive discounted upgrade for ${typeof map.name === 'object' ? map.name.en || map.name.es : map.name}`,
           },

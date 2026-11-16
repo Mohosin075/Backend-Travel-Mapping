@@ -20,6 +20,7 @@ import { emailTemplate } from '../../shared/emailTemplate'
 import stripe from '../../config/stripe'
 import { generatePDFInvoice } from '../../helpers/invoiceHelper'
 import { localizeField } from '../../helpers/localize'
+import { applyStripeCheckoutTotals, applyStripeIntentTotal } from '../../helpers/stripePaymentTotals'
 
 // Catalog map prices are USD. Clients must not reinterpret the stored price
 // as another currency when creating either web or mobile payments.
@@ -55,13 +56,28 @@ const createCheckoutSession = async (
         throw new ApiError(StatusCodes.CONFLICT, 'You already own this map.')
       }
     }
-    const session = await stripe.checkout.sessions.create({
+    const previousPayment = idempotencyKey ? await Payment.findOne({ guestCheckoutKey: idempotencyKey }) : null
+    if (previousPayment && (String(previousPayment.userId) !== String(user.authId) ||
+        String(previousPayment.mapId) !== String(payload.mapId))) {
+      throw new ApiError(StatusCodes.CONFLICT, 'This checkout belongs to a different purchase.')
+    }
+    const successUrl = payload.successUrl || `${config.clientUrl}?session_id={CHECKOUT_SESSION_ID}&success=true`
+    // Resuming a saved checkout must not recreate it with today's price/tax settings.
+    const session = previousPayment?.metadata?.checkoutSessionId
+      ? await stripe.checkout.sessions.retrieve(previousPayment.metadata.checkoutSessionId)
+      : await stripe.checkout.sessions.create({
+      ...(config.stripe?.automaticTaxEnabled ? {
+        automatic_tax: { enabled: true },
+        billing_address_collection: 'required',
+      } : {}),
       payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
+            ...(config.stripe?.automaticTaxEnabled ? { tax_behavior: 'exclusive' as const } : {}),
             currency,
             product_data: {
+              ...(config.stripe?.automaticTaxEnabled && config.stripe.taxCode ? { tax_code: config.stripe.taxCode } : {}),
               name: payload.productName || localizeField(map.name) || 'Map Purchase',
               description: payload.description || localizeField(map.description) || undefined,
             },
@@ -71,9 +87,7 @@ const createCheckoutSession = async (
         },
       ],
       mode: 'payment',
-      success_url:
-        payload.successUrl ||
-        `${config.clientUrl}?session_id={CHECKOUT_SESSION_ID}&success=true`,
+      success_url: successUrl,
       cancel_url:
         payload.cancelUrl ||
         `${config.clientUrl}/payment-failed?success=false`,
@@ -93,13 +107,15 @@ const createCheckoutSession = async (
       await Payment.updateOne({ guestCheckoutKey: idempotencyKey }, { $setOnInsert: {
         guestCheckoutKey: idempotencyKey,
         userId: user.authId, mapId: payload.mapId, userEmail: user.email,
-        amount: session.amount_total! / 100, currency: session.currency!.toUpperCase(), paymentMethod: 'stripe',
+        amount: typeof session.amount_total === 'number' ? session.amount_total / 100 : amount,
+        currency: (session.currency || currency).toUpperCase(), paymentMethod: 'stripe',
+        ...(session.automatic_tax?.enabled ? { subtotalAmount: (session.amount_subtotal ?? Math.round(amount * 100)) / 100 } : {}),
         paymentIntentId: session.id, status: 'pending',
         metadata: { checkoutSessionId: session.id, mapId: payload.mapId.toString() },
       } }, { upsert: true }).catch(async (error: any) => {
         if (error.code !== 11000 || !await Payment.findOne({ guestCheckoutKey: idempotencyKey })) throw error
       })
-      return { sessionId: session.id, url: session.url || payload.successUrl.replace('{CHECKOUT_SESSION_ID}', session.id) }
+      return { sessionId: session.id, url: session.url || successUrl.replace('{CHECKOUT_SESSION_ID}', session.id) }
     }
 
     await Payment.create({
@@ -107,6 +123,7 @@ const createCheckoutSession = async (
       mapId: payload.mapId,
       userEmail: user.email,
       amount,
+      ...(session.automatic_tax?.enabled ? { subtotalAmount: (session.amount_subtotal ?? Math.round(amount * 100)) / 100 } : {}),
       currency: currency.toUpperCase(),
       paymentMethod: 'stripe',
       paymentIntentId: session.payment_intent || session.id,
@@ -162,6 +179,15 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
       throw new ApiError(StatusCodes.BAD_REQUEST, 'This payment was refunded')
     }
 
+    // A PaymentIntent webhook may win the race. Still reconcile the tax breakdown.
+    if (stripeSession.payment_status === 'paid' && payment.status === 'succeeded') {
+      const changed = applyStripeCheckoutTotals(payment, stripeSession)
+      const intentChanged = Boolean(paymentIntentId && payment.paymentIntentId !== paymentIntentId)
+      if (paymentIntentId) payment.paymentIntentId = paymentIntentId
+      if (changed || intentChanged) await payment.save()
+      return payment
+    }
+
     // Update payment status based on session
     if (
       stripeSession.payment_status === 'paid' &&
@@ -172,7 +198,9 @@ const verifyCheckoutSession = async (sessionId: string): Promise<IPayment> => {
 
       try {
         // Update payment status
+        applyStripeCheckoutTotals(payment, stripeSession)
         payment.status = 'succeeded'
+        if (paymentIntentId) payment.paymentIntentId = paymentIntentId
         payment.metadata = {
           ...payment.metadata,
           stripeSessionId: stripeSession.id,
@@ -267,6 +295,10 @@ const createPaymentIntent = async (
   amount: number
 }> => {
   try {
+    if (config.stripe?.automaticTaxEnabled) {
+      throw new ApiError(StatusCodes.BAD_REQUEST,
+        'Please use secure Checkout for this purchase so applicable tax can be calculated from your billing address.')
+    }
     // Same as checkout: charge Map.price server-side (never trust client amount)
     const map = await Map.findById(payload.mapId)
     if (!map) {
@@ -390,7 +422,7 @@ const handlePaymentIntentWebhook = async (
       return
     }
 
-    if (payment.status === 'succeeded') {
+    if (payment.status === 'succeeded' || payment.status === 'refunded') {
       console.log(`Payment already processed: ${paymentIntent.id}`)
       return
     }
@@ -401,6 +433,7 @@ const handlePaymentIntentWebhook = async (
 
     try {
       // Update payment status
+      applyStripeIntentTotal(payment, paymentIntent)
       payment.status = 'succeeded'
       payment.metadata = {
         ...payment.metadata,
@@ -583,9 +616,18 @@ const refundPayment = async (
 
   // Process refund via Stripe
   try {
+    let intentId = payment.paymentIntentId
+    if (!intentId.startsWith('pi_')) {
+      intentId = payment.metadata?.paymentIntentId || intentId
+      if (intentId.startsWith('cs_')) {
+        const checkout = await stripe.checkout.sessions.retrieve(intentId)
+        intentId = typeof checkout.payment_intent === 'string'
+          ? checkout.payment_intent : checkout.payment_intent?.id || ''
+      }
+    }
     const refund = await stripe.refunds.create({
-      payment_intent: payment.paymentIntentId,
-      amount: Math.round(payment.amount * 100),
+      payment_intent: intentId,
+      // Omitting amount refunds the remaining Stripe charge, including actual tax.
       reason: reason ? 'requested_by_customer' : 'duplicate',
     })
 
@@ -593,7 +635,7 @@ const refundPayment = async (
       id,
       {
         status: 'refunded',
-        refundAmount: payment.amount,
+        refundAmount: typeof refund.amount === 'number' ? refund.amount / 100 : payment.amount,
         refundReason: reason,
         metadata: { ...payment.metadata, refundId: refund.id },
       },

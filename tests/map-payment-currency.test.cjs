@@ -6,7 +6,7 @@ const ts=require('typescript');
 const path=require('node:path');
 function load(file,imports={}) {
  const module={exports:{}};
- vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText,{module,exports:module.exports,require:n=>imports[n]||{},console});
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText,{module,exports:module.exports,require:n=>imports[n]||(n==='../../helpers/stripePaymentTotals'?load('src/helpers/stripePaymentTotals.ts'): {}),console});
  return module.exports;
 }
 function fixture(price=35) {

@@ -15,7 +15,7 @@ function load(file, imports) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
-  }).outputText, { module, exports: module.exports, require: name => imports[name] || (name.startsWith('.') ? {} : require(name)), console, Date, Buffer, URL });
+  }).outputText, { module, exports: module.exports, require: name => imports[name] || (name === '../../helpers/stripePaymentTotals' ? load('src/helpers/stripePaymentTotals.ts', {}) : (name.startsWith('.') ? {} : require(name))), console, Date, Buffer, URL });
   return module.exports;
 }
 function fixture(options = {}) {
@@ -233,6 +233,7 @@ function serviceFixture(owned = false) {
     '../user/user.model': { User: { findById: async () => ({ purchasedMaps: owned ? [mapId] : [] }) } },
     '../../helpers/localize': { localizeField: () => 'Map' },
     './payment.model': { Payment: {
+      findOne: async () => null,
       updateOne: async (...args) => calls.writes.push(args), create: async data => calls.writes.push(data),
     } },
     '../../config/stripe': { checkout: { sessions: { create: async (...args) => {
@@ -354,3 +355,26 @@ for (const type of ['checkout.session.expired', 'payment_intent.payment_failed',
     });
   }
 }
+
+
+for (const reconciled of [false, true]) test(`taxed legacy guest purchase completes when ${reconciled ? 'webhook' : 'browser'} returns first`, async () => {
+  const f = fixture({ user: guestUser, attempt: {},
+    payment: reconciled ? { amount: 38.15, subtotalAmount: 35, taxAmount: 3.15, status: 'succeeded' } : { amount: 35, subtotalAmount: 35 },
+    session: { amount_subtotal: 3500, amount_total: 3815, automatic_tax: { enabled: true, status: 'complete' },
+      total_details: { amount_tax: 315, amount_discount: 0 } } });
+  await f.controller.complete({ body: { checkoutToken: token, sessionId: 'cs_test' } }, f.res);
+  assert.equal(f.calls.fulfilled.length, 1); assert.equal(f.calls.tokens.length, 1);
+  assert.equal(f.user().verified, false);
+});
+for (const [name, session] of [
+  ['underpayment', { amount_total: 3500 }],
+  ['wrong original price', { amount_subtotal: 3000, amount_total: 3315 }],
+  ['incomplete tax', { automatic_tax: { enabled: true, status: 'requires_location_inputs' } }],
+  ['wrong currency', { currency: 'eur' }],
+]) test(`taxed guest ${name} cannot fulfil or log in`, async () => {
+  const f = fixture({ user: guestUser, attempt: {}, payment: { subtotalAmount: 35 }, session: {
+    amount_subtotal: 3500, amount_total: 3815, automatic_tax: { enabled: true, status: 'complete' },
+    total_details: { amount_tax: 315, amount_discount: 0 }, ...session } });
+  await assert.rejects(f.controller.complete({ body: { checkoutToken: token, sessionId: 'cs_test' } }, f.res));
+  assert.equal(f.calls.fulfilled.length + f.calls.tokens.length, 0);
+});

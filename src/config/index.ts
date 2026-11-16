@@ -67,6 +67,8 @@ export default {
     password: process.env.SUPER_ADMIN_PASSWORD,
   },
   stripe: {
+    automaticTaxEnabled: process.env.STRIPE_TAX_ENABLED === 'true',
+    taxCode: process.env.STRIPE_TAX_CODE?.trim() || undefined,
     stripeSecretKey: process.env.STRIPE_API_SECRET,
     webhookSecret: process.env.WEBHOOK_SECRET,
     paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET,
