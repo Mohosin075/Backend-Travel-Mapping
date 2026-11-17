@@ -161,10 +161,8 @@ const verifyCheckoutSession = (0, catchAsync_1.default)(async (req, res) => {
 });
 // Handle Stripe webhooks
 const handleWebhook = (0, catchAsync_1.default)(async (req, res) => {
-    console.log('hitting webhook handler');
     const signature = req.headers['stripe-signature'];
     const payload = req.body;
-    console.log({ payload });
     // Verify webhook signature and construct event
     const event = webhook_service_1.webhookService.verifyWebhookSignature(payload, signature);
     // Process the webhook event

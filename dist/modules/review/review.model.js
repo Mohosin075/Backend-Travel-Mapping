@@ -29,4 +29,7 @@ reviewSchema.index({ reviewer: 1 });
 reviewSchema.index({ placeId: 1, reviewer: 1 });
 reviewSchema.index({ businessId: 1, reviewer: 1 });
 reviewSchema.index({ status: 1 });
+reviewSchema.index({ reviewer: 1, createdAt: -1 });
+reviewSchema.index({ placeId: 1, createdAt: -1 });
+reviewSchema.index({ businessId: 1, createdAt: -1 });
 exports.Review = (0, mongoose_1.model)('Review', reviewSchema);

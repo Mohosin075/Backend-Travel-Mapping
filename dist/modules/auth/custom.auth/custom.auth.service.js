@@ -56,10 +56,11 @@ const createUser = async (payload) => {
     payload.email = (_a = payload.email) === null || _a === void 0 ? void 0 : _a.toLowerCase().trim();
     const isUserExist = await user_model_1.User.findOne({
         email: payload.email,
-        status: { $nin: [user_1.USER_STATUS.DELETED] },
     });
     if (isUserExist) {
-        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, `An account with this email already exist, please login or try with another email.`);
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.CONFLICT, isUserExist.status === user_1.USER_STATUS.DELETED
+            ? 'This account has been deleted. Please contact support or use another email.'
+            : 'An account with this email already exists. Please log in or use another email.');
     }
     const otp = (0, crypto_1.generateOtp)();
     const otpExpiresIn = new Date(Date.now() + 5 * 60 * 1000);
@@ -78,7 +79,6 @@ const createUser = async (payload) => {
         email: payload.email.toLowerCase().trim(),
         otp,
     });
-    emailHelper_1.emailHelper.sendEmail(createAccount);
     const user = await user_model_1.User.create({
         ...payload,
         password: payload.password,
@@ -87,6 +87,8 @@ const createUser = async (payload) => {
     if (!user) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Failed to create user.');
     }
+    // Do not send a signup code for an insert that failed (including duplicate races).
+    void emailHelper_1.emailHelper.sendEmail(createAccount);
     return {
         success: true,
         message: 'Registration successful and OTP sent to your email',
@@ -100,14 +102,21 @@ const customLogin = async (payload) => {
     const query = email ? { email: email.toLowerCase().trim() } : { phone: phone };
     const isUserExist = await user_model_1.User.findOne({
         ...query,
-        status: { $in: [user_1.USER_STATUS.ACTIVE] },
+        status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE, user_1.USER_STATUS.DELETED] },
     })
         .select('+password +authentication')
         .lean();
     if (!isUserExist) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, `No account found with this ${email ? 'email' : 'phone'}`);
     }
-    if (!isUserExist.password) {
+    if (isUserExist.status === user_1.USER_STATUS.DELETED) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.');
+    }
+    // This endpoint previously accepted active accounts only. Keep that policy.
+    if (isUserExist.status === user_1.USER_STATUS.INACTIVE) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'Your account is inactive. Please contact support.');
+    }
+    if (!isUserExist.password && isUserExist.provider !== 'guest_purchase') {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'It seems you have signed up using social login. Please use social login to access your account.');
     }
     const result = await common_1.AuthCommonServices.handleLoginLogic(payload, isUserExist);
@@ -141,10 +150,13 @@ const forgetPassword = async (email, phone) => {
         : { phone: phone };
     const isUserExist = await user_model_1.User.findOne({
         ...query,
-        status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE] },
+        status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE, user_1.USER_STATUS.DELETED] },
     });
     if (!isUserExist) {
-        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'No account found with this email or phone');
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, `No account found with this ${email ? 'email' : 'phone'}. Please check it or create an account.`);
+    }
+    if (isUserExist.status === user_1.USER_STATUS.DELETED) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.');
     }
     const otp = (0, crypto_1.generateOtp)();
     if (phone) {
@@ -165,9 +177,10 @@ const forgetPassword = async (email, phone) => {
     // //send otp to user
     if (email) {
         const forgetPasswordEmailTemplate = emailTemplate_1.emailTemplate.resetPassword({
-            name: isUserExist.name,
+            name: isUserExist.name || 'viajero',
             email: isUserExist.email,
             otp,
+            isSetup: !isUserExist.password,
         });
         emailHelper_1.emailHelper.sendEmail(forgetPasswordEmailTemplate);
     }
@@ -209,9 +222,11 @@ const resetPassword = async (resetToken, payload) => {
             authType: '',
         },
     };
+    const consumedToken = await token_model_1.Token.findOneAndDelete({ token: resetToken, user: isUserExist._id,
+        expireAt: { $gt: new Date() } });
+    if (!consumedToken)
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'This reset token was already used or expired. Please request a new code.');
     await user_model_1.User.findByIdAndUpdate(isUserExist._id, { $set: updatedUserData }, { new: true });
-    // One-time use
-    await token_model_1.Token.deleteOne({ token: resetToken });
     return { message: 'Password reset successfully' };
 };
 const verifyAccount = async (email, onetimeCode, password) => {
@@ -238,11 +253,21 @@ const verifyAccount = async (email, onetimeCode, password) => {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid or outdated code. Use the code from your latest email, or tap Resend Code.');
     }
     const currentDate = new Date();
-    if ((authentication === null || authentication === void 0 ? void 0 : authentication.expiresAt) < currentDate) {
+    if (!(authentication === null || authentication === void 0 ? void 0 : authentication.expiresAt) || new Date(authentication.expiresAt).getTime() <= currentDate.getTime()) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'OTP has expired, please try again.');
     }
+    // Consume the code atomically before any account/login/reset-token action.
+    // A signup verification code must not be replayable as a password-reset code.
+    const consumed = await user_model_1.User.findOneAndUpdate({
+        _id: isUserExist._id,
+        status: { $nin: [user_1.USER_STATUS.DELETED] },
+        'authentication.oneTimeCode': authentication.oneTimeCode,
+        'authentication.expiresAt': { $gt: currentDate },
+    }, { $set: { 'authentication.oneTimeCode': '' } }, { new: true });
+    if (!consumed)
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'This code was already used or expired. Please request a new code.');
     //either newly created user or existing user
-    if (!isUserExist.verified) {
+    if (!isUserExist.verified && authentication.authType !== 'resetPassword' && !authentication.resetPassword) {
         // If user was invited (has no password), they must set a password first
         if (!isUserExist.password) {
             if (password) {
@@ -286,7 +311,6 @@ const verifyAccount = async (email, onetimeCode, password) => {
         // Normal signup flow (already has password)
         await user_model_1.User.findByIdAndUpdate(isUserExist._id, { $set: { verified: true } }, { new: true });
         const tokens = auth_helper_1.AuthHelper.createToken(isUserExist._id, isUserExist.role, isUserExist.name, isUserExist.email);
-        console.log({ tokens });
         return (0, common_1.authResponse)(http_status_codes_1.StatusCodes.OK, `Welcome ${isUserExist.name} to our platform.`, isUserExist.role, tokens.accessToken, tokens.refreshToken);
     }
     else {
@@ -316,8 +340,15 @@ const verifyAccount = async (email, onetimeCode, password) => {
 const getRefreshToken = async (token) => {
     try {
         const decodedToken = jwtHelper_1.jwtHelper.verifyToken(token, config_1.default.jwt.jwt_refresh_secret);
-        const { userId, role } = decodedToken;
-        const tokens = auth_helper_1.AuthHelper.createToken(userId, role, decodedToken.name, decodedToken.email);
+        // Current tokens use authId; retain support for older userId tokens.
+        const userId = decodedToken.authId || decodedToken.userId;
+        if (!userId)
+            throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'Invalid Refresh Token');
+        const currentUser = await user_model_1.User.findById(userId);
+        if (!currentUser || currentUser.status !== user_1.USER_STATUS.ACTIVE) {
+            throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This account is no longer active. Please sign in again.');
+        }
+        const tokens = auth_helper_1.AuthHelper.createToken(userId, currentUser.role, currentUser.name, currentUser.email);
         return {
             accessToken: tokens.accessToken,
         };
@@ -341,7 +372,6 @@ const socialLogin = async (appId, deviceToken) => {
             status: user_1.USER_STATUS.ACTIVE,
             password: crypto.randomUUID(),
         });
-        console.log({ createdUser });
         if (!createdUser)
             throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Failed to create user.');
         const tokens = auth_helper_1.AuthHelper.createToken(createdUser._id, createdUser.role, createdUser.name, createdUser.email);
@@ -385,7 +415,7 @@ const resendOtpToPhoneOrEmail = async (authType, email, phone) => {
             email: isUserExist.email,
             name: isUserExist.name,
             otp,
-            type: authType,
+            type: authType === 'resetPassword' && !isUserExist.password ? 'setPassword' : authType,
         });
         // emailQueue.add('emails', forgetPasswordEmailTemplate)
         await user_model_1.User.findByIdAndUpdate(isUserExist._id, {
@@ -425,10 +455,13 @@ const deleteAccount = async (user, password) => {
 const resendOtp = async (email, authType) => {
     const isUserExist = await user_model_1.User.findOne({
         email: email.toLowerCase().trim(),
-        status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE] },
+        status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE, user_1.USER_STATUS.DELETED] },
     }).select('+password +authentication');
     if (!isUserExist) {
-        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, `No account found with this ${email}, please try again.`);
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'No account found with this email. Please check it or create an account.');
+    }
+    if (isUserExist.status === user_1.USER_STATUS.DELETED) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.');
     }
     const { authentication } = isUserExist;
     const nextRequestCount = ((authentication === null || authentication === void 0 ? void 0 : authentication.requestCount) || 0) + 1;

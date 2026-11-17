@@ -11,7 +11,7 @@ const visited_model_1 = require("./visited.model");
 const place_model_1 = require("../place/place.model");
 const business_model_1 = require("../business/business.model");
 const user_model_1 = require("../user/user.model");
-const levelConfig_service_1 = require("../award/levelConfig.service");
+const countryScope_1 = require("../../helpers/countryScope");
 const toggleVisited = async (userId, payload) => {
     var _a, _b;
     const targetId = payload.placeId || payload.place || payload.business || payload.id;
@@ -49,14 +49,8 @@ const toggleVisited = async (userId, payload) => {
                 const bId = existing.business || targetId;
                 await business_model_1.Business.findByIdAndUpdate(bId, { $inc: { viewCount: -1 } }, { session });
             }
-            const pointsToDeduct = Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) > 0 ? Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) : 10;
-            const userDoc = await user_model_1.User.findById(userId).session(session);
-            const currentPoints = Number(userDoc === null || userDoc === void 0 ? void 0 : userDoc.points) || 0;
-            const newPoints = Math.max(0, currentPoints - pointsToDeduct);
-            const levelInfo = await levelConfig_service_1.LevelConfigServices.getDynamicUserLevel(newPoints, (userDoc === null || userDoc === void 0 ? void 0 : userDoc.totalReviewsApproved) || 0);
             const updatedUser = await user_model_1.User.findByIdAndUpdate(userId, {
                 $pull: { visitedPlaces: targetId },
-                $set: { points: newPoints, level: levelInfo.levelNumber },
             }, { new: true, session });
             // Sync count based on actual length
             const actualCount = (updatedUser === null || updatedUser === void 0 ? void 0 : updatedUser.visitedPlaces) ? updatedUser.visitedPlaces.length : 0;
@@ -69,7 +63,8 @@ const toggleVisited = async (userId, payload) => {
             const newRecord = await visited_model_1.Visited.create([
                 {
                     user: userId,
-                    ...(locationType === 'Business' ? { business: targetId } : { place: targetId }),
+                    // A Place with type Business still references the places collection.
+                    ...(isPlaceExist ? { place: targetId } : { business: targetId }),
                     type: locationType,
                     visitedAt: new Date(),
                 },
@@ -94,14 +89,8 @@ const toggleVisited = async (userId, payload) => {
                     }
                 }
             }
-            const pointsToAdd = Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) > 0 ? Number(isPlaceExist === null || isPlaceExist === void 0 ? void 0 : isPlaceExist.pointsAwarded) : 10;
-            const userDoc = await user_model_1.User.findById(userId).session(session);
-            const currentPoints = Number(userDoc === null || userDoc === void 0 ? void 0 : userDoc.points) || 0;
-            const newPoints = currentPoints + pointsToAdd;
-            const levelInfo = await levelConfig_service_1.LevelConfigServices.getDynamicUserLevel(newPoints, (userDoc === null || userDoc === void 0 ? void 0 : userDoc.totalReviewsApproved) || 0);
             const updatedUser = await user_model_1.User.findByIdAndUpdate(userId, {
                 $addToSet: { visitedPlaces: targetId },
-                $set: { points: newPoints, level: levelInfo.levelNumber },
             }, { new: true, session });
             const actualCount = (updatedUser === null || updatedUser === void 0 ? void 0 : updatedUser.visitedPlaces) ? updatedUser.visitedPlaces.length : 1;
             await user_model_1.User.findByIdAndUpdate(userId, { $set: { visitedPlacesCount: actualCount } }, { session });
@@ -169,13 +158,14 @@ const getMyVisitedPlaces = async (userId, query) => {
                             media: 1,
                             type: 1,
                             address: 1,
+                            country: 1,
                             location: 1,
                             rating: 1,
                             totalReview: 1,
                             entryCost: 1,
                             difficulty: 1,
                             category: { name: 1, color: 1, icon: 1 },
-                            map: { name: 1, country: 1 },
+                            map: { _id: 1, name: 1, country: 1 },
                         },
                     },
                 ],
@@ -225,6 +215,18 @@ const getMyVisitedPlaces = async (userId, query) => {
             },
         },
     ];
+    if (typeof query.country === 'string' && query.country.trim()) {
+        const { countries, mapIds } = await (0, countryScope_1.getCountryScope)(query.country);
+        pipeline.push({ $match: { $or: [
+                    { 'place.country': { $in: countries } },
+                    { 'place.map._id': { $in: mapIds } },
+                    { 'place.map.country': { $in: countries } },
+                    { 'place.map.name': { $in: countries } },
+                    { 'place.map.name.en': { $in: countries } },
+                    { 'place.map.name.es': { $in: countries } },
+                    { 'business.location.country': { $in: countries } },
+                ] } });
+    }
     // Optional search by name or address across place/business
     if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim()) {
         const searchRegex = new RegExp(searchTerm.trim(), 'i');

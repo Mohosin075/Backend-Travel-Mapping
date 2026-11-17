@@ -10,6 +10,7 @@ const user_1 = require("../../enum/user");
 // ------------------ USER SCHEMA ------------------
 const UserSchema = new mongoose_1.Schema({
     name: { type: String, trim: true },
+    lastActiveAt: { type: Date },
     email: { type: String, unique: true, lowercase: true, required: true },
     profile: { type: String, default: '' },
     phone: { type: String },
@@ -156,6 +157,7 @@ UserSchema.virtual('awards', {
 });
 // ------------------ INDEXES ------------------
 UserSchema.index({ location: '2dsphere' }); // Geo queries support
+UserSchema.index({ lastActiveAt: -1 }); // Activity/report date ranges
 // ------------------ PRE HOOKS ------------------
 UserSchema.pre('save', async function (next) {
     if (!this.isModified('password') || !this.password)

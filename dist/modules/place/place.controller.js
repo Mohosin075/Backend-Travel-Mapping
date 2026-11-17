@@ -9,13 +9,13 @@ const catchAsync_1 = __importDefault(require("../../shared/catchAsync"));
 const sendResponse_1 = __importDefault(require("../../shared/sendResponse"));
 const place_service_1 = require("./place.service");
 const mapAccessHelper_1 = require("../../helpers/mapAccessHelper");
-const map_model_1 = require("../map/map.model");
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const mapHelper_1 = require("../../utils/mapHelper");
 const user_1 = require("../../enum/user");
 const media_1 = require("../../utils/media");
 const localize_1 = require("../../helpers/localize");
 const pick_1 = __importDefault(require("../../shared/pick"));
+const placePrivacy_1 = require("../../helpers/placePrivacy");
 const placeFields = ['name', 'description', 'access', 'entryCost', 'hikeTime', 'atmosphere', 'accessibility.notes', 'recommendations.tips', 'category.name'];
 const createPlace = (0, catchAsync_1.default)(async (req, res) => {
     const user = await (0, mapAccessHelper_1.getUserFromToken)(req.headers.authorization);
@@ -47,31 +47,23 @@ const createPlace = (0, catchAsync_1.default)(async (req, res) => {
 });
 const getAllPlaces = (0, catchAsync_1.default)(async (req, res) => {
     const authorizationHeader = req.headers.authorization;
-    // Run auth lookup and paid map IDs in parallel to avoid sequential DB hits
-    const [user, paidMaps] = await Promise.all([
-        (0, mapAccessHelper_1.getUserFromToken)(authorizationHeader),
-        map_model_1.Map.find({ isPaid: true }, '_id'),
-    ]);
+    const user = await (0, mapAccessHelper_1.getUserFromToken)(authorizationHeader);
     const accessibleMapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
-    const paidMapIds = paidMaps.map(m => m._id.toString());
-    const lockedMapIds = paidMapIds.filter(id => !accessibleMapIds.includes(id));
-    const isPremium = !!(user && [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role));
-    const result = await place_service_1.PlaceService.getAllPlaces(req.query, isPremium, accessibleMapIds);
+    const isSuperOrAdmin = !!(user && [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN].includes(user.role));
+    const isEditor = !!(user && user.role === user_1.USER_ROLES.MAP_EDITOR);
+    const isAdminOrEditor = isSuperOrAdmin || isEditor;
+    const result = await place_service_1.PlaceService.getAllPlaces(req.query, isAdminOrEditor, accessibleMapIds, isEditor ? accessibleMapIds : undefined);
     const visitedSet = new Set(((user === null || user === void 0 ? void 0 : user.visitedPlaces) || []).map((id) => id.toString()));
     const updatedData = result.data.map((place) => {
         var _a;
         const mapId = ((_a = place.map) === null || _a === void 0 ? void 0 : _a._id) || place.map;
-        const isLocked = !isPremium && mapId && lockedMapIds.includes(mapId.toString()) && place.type !== 'Business';
+        const isLocked = !isSuperOrAdmin && place.type !== 'Business' &&
+            (!mapId || !accessibleMapIds.includes(mapId.toString()));
         const isVisited = visitedSet.has(place._id.toString());
         if (isLocked) {
             // Keep teaser fields (name/media/category/location) for locked cards
-            const { description, hours, privateInfo, ...teaser } = place;
             return {
-                ...teaser,
-                description: undefined,
-                hours: undefined,
-                privateInfo: undefined,
-                isLocked: true,
+                ...(0, placePrivacy_1.lockedPlaceTeaser)(place),
                 isVisited,
             };
         }
@@ -98,23 +90,35 @@ const getPlaceById = (0, catchAsync_1.default)(async (req, res) => {
     }
     const authorizationHeader = req.headers.authorization;
     const user = await (0, mapAccessHelper_1.getUserFromToken)(authorizationHeader);
-    const isPremium = !!(user && [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role));
-    if (!isPremium && (result.status === 'Draft' || result.status === 'Pending')) {
+    const isSuperOrAdmin = !!(user && [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN].includes(user.role));
+    const isEditor = !!(user && user.role === user_1.USER_ROLES.MAP_EDITOR);
+    if (!isSuperOrAdmin && !isEditor && (result.status === 'Draft' || result.status === 'Pending')) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Place not found');
     }
     const accessibleMapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
     const mapId = ((_a = result.map) === null || _a === void 0 ? void 0 : _a._id) || result.map;
+    if (!isSuperOrAdmin && !mapId && result.type !== 'Business') {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This place has no accessible map.');
+    }
+    if (isEditor && (!mapId || !accessibleMapIds.includes(mapId.toString())) && result.type !== 'Business') {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'You can only view places in your assigned maps.');
+    }
+    if (!isSuperOrAdmin && (result.status === 'Draft' || result.status === 'Pending') &&
+        (!isEditor || !mapId || !accessibleMapIds.includes(mapId.toString()))) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Place not found');
+    }
     if (mapId) {
-        const isLocked = !accessibleMapIds.includes(mapId.toString());
-        if (!isPremium && isLocked) {
+        const isAccessible = accessibleMapIds.includes(mapId.toString());
+        if (!isSuperOrAdmin && !isAccessible) {
             if (result.type !== 'Business') {
                 throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This information and these benefits can be unlocked by purchasing your favorite map.');
             }
         }
     }
     const placeObj = typeof result.toObject === 'function' ? result.toObject() : result;
-    const isLocked = mapId && !accessibleMapIds.includes(mapId.toString()) && result.type !== 'Business';
-    placeObj.isLocked = !isPremium && !!isLocked;
+    const isAccessible = mapId ? accessibleMapIds.includes(mapId.toString()) : true;
+    const isLocked = !isSuperOrAdmin && !isAccessible && result.type !== 'Business';
+    placeObj.isLocked = !!isLocked;
     placeObj.isVisited = !!(user && (user.visitedPlaces || []).some((vId) => vId.toString() === result._id.toString()));
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
@@ -133,7 +137,10 @@ const updatePlace = (0, catchAsync_1.default)(async (req, res) => {
     }
     // A place must belong to a map, verify access to the existing map
     const mapId = ((_a = existingPlace.map) === null || _a === void 0 ? void 0 : _a._id) || existingPlace.map;
-    if (mapId) {
+    if (existingPlace.sourceCollection === 'business') {
+        await (0, mapAccessHelper_1.verifyEditorBusinessAccess)(user, existingPlace.country);
+    }
+    else if (mapId) {
         await (0, mapAccessHelper_1.verifyEditorEditAccess)(user, mapId.toString());
     }
     // If they are moving the place to a new map, verify access to the new map too

@@ -33,6 +33,10 @@ exports.sendBulkEmailsZodSchema = zod_1.z.object({
     }),
 });
 exports.PromoValidations = {
+    verifyPayment: zod_1.z.object({ body: zod_1.z.object({
+            code: zod_1.z.string().min(1).max(100),
+            sessionId: zod_1.z.string().regex(/^cs_[a-zA-Z0-9_]+$/).max(255).optional(),
+        }) }),
     bulkGeneratePromoZodSchema: exports.bulkGeneratePromoZodSchema,
     claimPromoZodSchema: exports.claimPromoZodSchema,
     createPromoCheckoutSessionZodSchema: exports.createPromoCheckoutSessionZodSchema,

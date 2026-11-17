@@ -12,6 +12,7 @@ const emailHelper_1 = require("../../helpers/emailHelper");
 const user_model_1 = require("../user/user.model");
 const stripe_1 = __importDefault(require("../../config/stripe"));
 const promo_model_1 = require("../promo/promo.model");
+const stripePaymentTotals_1 = require("../../helpers/stripePaymentTotals");
 const handleCheckoutSessionCompleted = async (sessionData) => {
     var _a, _b, _c, _d;
     try {
@@ -19,6 +20,8 @@ const handleCheckoutSessionCompleted = async (sessionData) => {
         const sessionWithDetails = await stripe_1.default.checkout.sessions.retrieve(sessionData.id, {
             expand: ['payment_intent', 'line_items'],
         });
+        if (sessionWithDetails.payment_status !== 'paid')
+            return;
         console.log('✅ Session Details Retrieved. Payment Intent:', sessionWithDetails.payment_intent);
         let lookupId;
         if (typeof sessionWithDetails.payment_intent === 'string') {
@@ -45,12 +48,24 @@ const handleCheckoutSessionCompleted = async (sessionData) => {
                 throw new Error(`Payment not found for session: ${sessionWithDetails.id}`);
             }
             // Check if already processed to avoid duplicates
+            if (payment.status === 'refunded') {
+                await mongoSession.commitTransaction();
+                return;
+            }
             if (payment.status === 'succeeded') {
+                const changed = (0, stripePaymentTotals_1.applyStripeCheckoutTotals)(payment, sessionWithDetails);
+                const intentChanged = payment.paymentIntentId !== lookupId;
+                payment.paymentIntentId = lookupId;
+                if (changed || intentChanged)
+                    await payment.save({ session: mongoSession });
                 await mongoSession.commitTransaction();
                 return;
             }
             // Update payment
+            (0, stripePaymentTotals_1.applyStripeCheckoutTotals)(payment, sessionWithDetails);
             payment.status = 'succeeded';
+            payment.paymentIntentId = lookupId;
+            payment.metadata = { ...payment.metadata, paymentIntentId: lookupId };
             payment.metadata = { ...payment.metadata, ...sessionWithDetails };
             await payment.save({ session: mongoSession });
             // Update User purchasedMaps if mapId exists in metadata or payment
@@ -68,7 +83,7 @@ const handleCheckoutSessionCompleted = async (sessionData) => {
             const promoCode = ((_c = sessionWithDetails.metadata) === null || _c === void 0 ? void 0 : _c.promoCode) || ((_d = payment.metadata) === null || _d === void 0 ? void 0 : _d.promoCode);
             if (promoCode) {
                 console.log(`Webhook: Processing promo code usage for code: ${promoCode}`);
-                const updatedPromo = await promo_model_1.PromoLink.findOneAndUpdate({ code: promoCode, isUsed: false }, {
+                const updatedPromo = await promo_model_1.PromoLink.findOneAndUpdate({ code: promoCode, $or: [{ isUsed: false }, { usedBy: payment.userId }] }, {
                     isUsed: true,
                     usedBy: payment.userId,
                     usedAt: new Date(),
@@ -77,7 +92,7 @@ const handleCheckoutSessionCompleted = async (sessionData) => {
                     console.log(`Webhook: PromoLink code: ${promoCode} marked as used`);
                 }
                 else {
-                    console.warn(`Webhook WARNING: PromoLink code: ${promoCode} was not found or already marked as used.`);
+                    throw new ApiError_1.default(http_status_codes_1.StatusCodes.CONFLICT, 'Promo already claimed by another account; payment retained for support.');
                 }
             }
             await mongoSession.commitTransaction();
@@ -86,8 +101,10 @@ const handleCheckoutSessionCompleted = async (sessionData) => {
             await emailHelper_1.emailHelper.sendEmail({
                 to: payment.userEmail,
                 subject: 'Payment Successful',
-                html: `<p>Your payment was successful.</p>`,
-            });
+                html: payment.guestCheckoutKey
+                    ? `<p>Your map purchase is ready.</p><p><a href="${config_1.default.clientUrl}/set-password?email=${encodeURIComponent(payment.userEmail)}">Verify your email and set a password</a> to return to your account later.</p>`
+                    : `<p>Your payment was successful.</p>`,
+            }).catch(error => console.error('Payment receipt email failed:', error));
         }
         catch (error) {
             await mongoSession.abortTransaction();
@@ -111,7 +128,7 @@ const handleCheckoutSessionExpired = async (session) => {
                 { 'metadata.checkoutSessionId': session.id },
             ],
         }).session(mongoSession);
-        if (payment) {
+        if (payment && payment.status !== 'succeeded' && payment.status !== 'refunded') {
             payment.status = 'failed';
             payment.metadata = { ...payment.metadata, ...session, expired: true };
             await payment.save({ session: mongoSession });
@@ -158,11 +175,12 @@ const handlePaymentSuccess = async (paymentIntent) => {
             return;
         }
         // Check if already processed
-        if (payment.status === 'succeeded') {
+        if (payment.status === 'succeeded' || payment.status === 'refunded') {
             await mongoSession.commitTransaction();
             return;
         }
         // Update payment
+        (0, stripePaymentTotals_1.applyStripeIntentTotal)(payment, paymentIntent);
         payment.status = 'succeeded';
         // Ensure we don't overwrite crucial metadata if it exists
         payment.metadata = { ...payment.metadata, ...paymentIntent };
@@ -197,6 +215,7 @@ const handlePaymentSuccess = async (paymentIntent) => {
     }
 };
 const handlePaymentFailure = async (paymentIntent) => {
+    var _a, _b;
     const mongoSession = await payment_model_1.Payment.startSession();
     mongoSession.startTransaction();
     try {
@@ -204,12 +223,14 @@ const handlePaymentFailure = async (paymentIntent) => {
             paymentIntentId: paymentIntent.id,
         }).session(mongoSession);
         // Fallback for failure too
-        if (!payment && paymentIntent.metadata && paymentIntent.metadata.mapId) {
+        if (!payment && ((_a = paymentIntent.metadata) === null || _a === void 0 ? void 0 : _a.mapId) && ((_b = paymentIntent.metadata) === null || _b === void 0 ? void 0 : _b.userId)) {
             payment = await payment_model_1.Payment.findOne({
                 mapId: paymentIntent.metadata.mapId,
+                userId: paymentIntent.metadata.userId,
+                status: 'pending',
             }).session(mongoSession);
         }
-        if (payment) {
+        if (payment && payment.status !== 'succeeded' && payment.status !== 'refunded') {
             payment.status = 'failed';
             payment.metadata = { ...payment.metadata, ...paymentIntent };
             await payment.save({ session: mongoSession });
@@ -236,9 +257,12 @@ const handleChargeRefunded = async (charge) => {
             $or: [
                 { paymentIntentId },
                 { 'metadata.paymentIntentId': paymentIntentId },
+                { 'metadata.payment_intent': paymentIntentId },
+                { 'metadata.payment_intent.id': paymentIntentId },
             ],
         });
         if (payment) {
+            (0, stripePaymentTotals_1.applyStripeIntentTotal)(payment, { amount: charge.amount, currency: charge.currency });
             payment.status = 'refunded';
             payment.refundAmount = charge.amount_refunded
                 ? charge.amount_refunded / 100
@@ -256,11 +280,11 @@ const handleChargeRefunded = async (charge) => {
     }
     catch (error) {
         console.error('Error handling charge.refunded webhook:', error);
+        throw error;
     }
 };
 exports.WebhookService = {
     handleWebhook: async (payload) => {
-        console.log('🔔 Processing Checkout Session Completed:', payload);
         try {
             const signature = payload.headers['stripe-signature'];
             const webhookSecret = config_1.default.stripe.paymentWebhookSecret;
@@ -271,12 +295,13 @@ exports.WebhookService = {
                 }
                 catch (err) {
                     console.error('⚠️ Webhook signature verification failed:', err.message);
-                    // Fallback to direct parsing for development if needed,
-                    // but in production this should probably throw
-                    event = JSON.parse(payload.body.toString());
+                    throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid webhook signature');
                 }
             }
             else {
+                if (config_1.default.node_env === 'production' || webhookSecret) {
+                    throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Webhook signature and secret are required');
+                }
                 event = JSON.parse(payload.body.toString());
             }
             console.log(`Processing webhook: ${event.type}`);

@@ -30,7 +30,6 @@ class EmailNotificationService {
                 dashboardUrl: `${process.env.FRONTEND_URL}/dashboard`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Subscription welcome email sent to: ${user.email}`);
         }
         catch (error) {
             console.error('Error sending subscription welcome email:', error);
@@ -53,7 +52,6 @@ class EmailNotificationService {
                 upgradeUrl: `${process.env.FRONTEND_URL}/subscription/plans`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Trial ending email sent to: ${user.email}`);
         }
         catch (error) {
             console.error('Error sending trial ending email:', error);
@@ -77,7 +75,6 @@ class EmailNotificationService {
                 dashboardUrl: `${process.env.FRONTEND_URL}/dashboard`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Payment success email sent to: ${user.email}`);
         }
         catch (error) {
             console.error('Error sending payment success email:', error);
@@ -106,7 +103,6 @@ class EmailNotificationService {
                 dashboardUrl: `${process.env.FRONTEND_URL}/dashboard`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Payment failed email sent to: ${user.email}`);
         }
         catch (error) {
             console.error('Error sending payment failed email:', error);
@@ -128,7 +124,6 @@ class EmailNotificationService {
                 reactivateUrl: `${process.env.FRONTEND_URL}/subscription/plans`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Subscription canceled email sent to: ${user.email}`);
         }
         catch (error) {
             console.error('Error sending subscription canceled email:', error);
@@ -158,7 +153,6 @@ class EmailNotificationService {
                 billingUrl: `${process.env.FRONTEND_URL}/billing`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Plan change email sent to: ${user.email}`);
         }
         catch (error) {
             console.error('Error sending plan change email:', error);
@@ -185,7 +179,6 @@ class EmailNotificationService {
                 dashboardUrl: `${process.env.FRONTEND_URL}/dashboard`,
             });
             await emailHelper_1.emailHelper.sendEmail(emailData);
-            console.log(`Invoice email sent to: ${invoice.customer_email}`);
         }
         catch (error) {
             console.error('Error sending invoice email:', error);

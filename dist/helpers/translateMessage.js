@@ -58,6 +58,30 @@ const entityMap = {
     stops: { es: 'Paradas', gender: 'f', plural: true },
 };
 const exactMessageMap = {
+    'an account with this email already exists. please log in or use another email': {
+        en: 'An account with this email already exists. Please log in or use another email',
+        es: 'Ya existe una cuenta con este correo. Inicia sesión o usa otro correo',
+    },
+    'this account has been deleted. please contact support or use another email': {
+        en: 'This account has been deleted. Please contact support or use another email',
+        es: 'Esta cuenta ha sido eliminada. Contacta con soporte o usa otro correo',
+    },
+    'your account is inactive. please contact support': {
+        en: 'Your account is inactive. Please contact support',
+        es: 'Tu cuenta está inactiva. Contacta con soporte',
+    },
+    'a record with these details already exists. please use different details': {
+        en: 'A record with these details already exists. Please use different details',
+        es: 'Ya existe un registro con estos datos. Usa datos diferentes',
+    },
+    'no account found with this email. please check it or create an account': {
+        en: 'No account found with this email. Please check it or create an account',
+        es: 'No encontramos una cuenta con este correo. Compruébalo o crea una cuenta',
+    },
+    'no account found with this phone. please check it or create an account': {
+        en: 'No account found with this phone. Please check it or create an account',
+        es: 'No encontramos una cuenta con este teléfono. Compruébalo o crea una cuenta',
+    },
     // Authentication & Authorization
     'you are not authorized': {
         en: 'You are not authorized',

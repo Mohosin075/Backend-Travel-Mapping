@@ -17,7 +17,6 @@ const getCountryFromCoordinates = async (lat, lng) => {
     try {
         const agent = new https_1.default.Agent({ family: 4 });
         const API_KEY = config_1.default.server_map_api_key;
-        console.log('API_KEY', API_KEY);
         const response = await axios_1.default.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
                 latlng: `${lat},${lng}`,
@@ -35,11 +34,6 @@ const getCountryFromCoordinates = async (lat, lng) => {
                 }
             }
         }
-        console.log('Google API Status:', response.data.status);
-        if (response.data.error_message) {
-            console.log('Google API Error:', response.data.error_message);
-        }
-        console.log('No country found for coordinates:', lat, lng);
         return null;
     }
     catch (error) {

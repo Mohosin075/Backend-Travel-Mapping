@@ -13,6 +13,7 @@ const offer_model_1 = require("../offer/offer.model");
 const business_model_1 = require("../business/business.model");
 const user_model_1 = require("../user/user.model");
 const mongoose_1 = __importDefault(require("mongoose"));
+const countryScope_1 = require("../../helpers/countryScope");
 const toggleFavourite = async (userId, payload) => {
     const { type, map, place, offer, business } = payload;
     const session = await mongoose_1.default.startSession();
@@ -168,15 +169,35 @@ const toggleFavourite = async (userId, payload) => {
     }
 };
 const getMyFavourites = async (userId, query) => {
-    const { page = 1, limit = 1000, sort = '-createdAt', ...filterData } = query;
+    const { page = 1, limit = 1000, sort = '-createdAt', country, ...filterData } = query;
     const skip = (Number(page) - 1) * Number(limit);
     const sortStr = sort;
     const sortOrder = sortStr.startsWith('-') ? -1 : 1;
     const sortField = sortStr.replace(/^-/, '');
     const matchStage = {
-        user: new mongoose_1.default.Types.ObjectId(userId),
         ...filterData,
+        // Query parameters must never override the authenticated owner.
+        user: new mongoose_1.default.Types.ObjectId(userId),
     };
+    if (typeof country === 'string' && country.trim()) {
+        const { countries, mapIds } = await (0, countryScope_1.getCountryScope)(country);
+        const [places, businesses] = await Promise.all([
+            place_model_1.Place.find({ $or: [{ country: { $in: countries } }, { map: { $in: mapIds } }] }).select('_id').lean(),
+            business_model_1.Business.find({ 'location.country': { $in: countries } }).select('_id').lean(),
+        ]);
+        const placeIds = places.map(place => place._id);
+        const businessIds = businesses.map(business => business._id);
+        const offers = await offer_model_1.Offer.find({ $or: [
+                { place: { $in: placeIds } }, { business: { $in: businessIds } },
+            ] }).select('_id').lean();
+        matchStage.$and = [
+            ...(Array.isArray(matchStage.$and) ? matchStage.$and : []),
+            { $or: [
+                    { map: { $in: mapIds } }, { place: { $in: placeIds } },
+                    { business: { $in: businessIds } }, { offer: { $in: offers.map(offer => offer._id) } },
+                ] },
+        ];
+    }
     // Paginate first, then lookup only the page of docs (list fields only)
     const pipeline = [
         { $match: matchStage },

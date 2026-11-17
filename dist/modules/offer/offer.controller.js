@@ -105,6 +105,13 @@ const getOfferRedemptions = (0, catchAsync_1.default)(async (req, res) => {
 exports.OfferController = {
     createOffer,
     getAllOffers,
+    getManagedOffers: (0, catchAsync_1.default)(async (req, res) => {
+        const result = await offer_service_1.OfferService.getManagedOffers(req.query, req.headers.authorization);
+        (0, sendResponse_1.default)(res, {
+            statusCode: http_status_codes_1.StatusCodes.OK, success: true, message: 'Managed offers retrieved successfully',
+            meta: result.meta, data: (0, localize_1.localizeDocument)(result.data, req.lang, offerFields),
+        });
+    }),
     getOfferById,
     updateOffer,
     deleteOffer,

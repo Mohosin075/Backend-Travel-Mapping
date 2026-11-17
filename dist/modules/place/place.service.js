@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PlaceService = void 0;
 const http_status_codes_1 = require("http-status-codes");
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
+const place_fields_1 = require("./place.fields");
 const place_model_1 = require("./place.model");
 const map_model_1 = require("../map/map.model");
 const mongoose_1 = __importDefault(require("mongoose"));
@@ -143,6 +144,7 @@ const toNumber = (value) => {
 };
 const createPlace = async (payload) => {
     var _a;
+    payload = (0, place_fields_1.scopePlaceFields)(payload, payload.type || 'Regular');
     await processPlaceTranslations(payload);
     // 1. Resolve map and align country to designated map (prevents incorrect country when adding places)
     let map = null;
@@ -200,6 +202,14 @@ const createPlace = async (payload) => {
     }
 };
 const commonSearchSynonyms = {
+    // Match common English/Spanish names and translated variants without changing stored names.
+    stone: ['rock', 'piedra', 'piedras'],
+    rock: ['stone', 'piedra', 'piedras'],
+    piedra: ['stone', 'rock', 'piedras'],
+    piedras: ['stone', 'rock', 'piedra'],
+    written: ['escrita', 'escrito'],
+    escrita: ['written', 'escrito'],
+    escrito: ['written', 'escrita'],
     faro: ['lighthouse', 'faros', 'lighthouses'],
     faros: ['lighthouse', 'lighthouses', 'faro'],
     lighthouse: ['faro', 'faros', 'lighthouses'],
@@ -306,7 +316,8 @@ function buildPlaceSearchFilter(searchTerm, isBusiness = false) {
     // Multi-word search (e.g. "San Sebastian", "Cabo Rojo", "Cascada Gozalandia"):
     // Either exact phrase in any field, OR each significant word must be found across the place's fields
     const wordAndConditions = words.map(w => {
-        const wRegex = new RegExp(buildAccentInsensitivePattern(w), 'i');
+        const terms = [w, ...(commonSearchSynonyms[w] || [])];
+        const wRegex = new RegExp(terms.map(buildAccentInsensitivePattern).join('|'), 'i');
         return { $or: getFields(wRegex) };
     });
     return {
@@ -316,7 +327,7 @@ function buildPlaceSearchFilter(searchTerm, isBusiness = false) {
         ],
     };
 }
-const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = []) => {
+const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = [], editorMapIds) => {
     const searchTerm = typeof query.searchTerm === 'string' ? query.searchTerm.trim() : '';
     const lat = toNumber(query.lat);
     const lng = toNumber(query.lng);
@@ -357,12 +368,13 @@ const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = [
             Object.assign(match, searchFilter);
         }
     }
-    // Apply access before deduplication and pagination so locked search hits cannot
-    // reveal names or displace accessible results. Unfiltered map teasers are unchanged.
-    if (searchTerm && !isAdminOrEditor) {
-        match.$and = [{ map: { $in: accessibleMapIds } }];
-    }
     // 1. Fetch regular places if applicable
+    if (editorMapIds) {
+        match.$and = [
+            ...(match.$and || []),
+            { $or: [{ status: 'Published' }, { map: { $in: editorMapIds } }] },
+        ];
+    }
     const queryType = query.type;
     const shouldQueryPlaces = !queryType || queryType === 'Regular' || queryType.includes('Regular');
     let places = [];
@@ -576,7 +588,10 @@ const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = [
             placeCoordSet.add(coordKey);
         deduplicatedPlaces.push(p);
     }
-    let combined = [...deduplicatedPlaces, ...deduplicatedBusinesses];
+    // Management must show each stored record, including records sharing a name/pin.
+    let combined = isAdminOrEditor
+        ? [...formattedPlaces, ...formattedBusinesses]
+        : [...deduplicatedPlaces, ...deduplicatedBusinesses];
     // Filter and sort combined results
     if (searchTerm) {
         const stripAccents = (str) => (str || '')
@@ -608,12 +623,13 @@ const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = [
             .filter(w => w.length > 1 && !stopWords.includes(w));
         const mainPhrase = wordsClean.join(' ');
         const getScore = (p) => {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d;
             let score = 0;
             const nameEn = stripAccents(((_a = p.name) === null || _a === void 0 ? void 0 : _a.en) || (typeof p.name === 'string' ? p.name : ''));
             const nameEs = stripAccents(((_b = p.name) === null || _b === void 0 ? void 0 : _b.es) || (typeof p.name === 'string' ? p.name : ''));
-            const addrEn = stripAccents(((_c = p.address) === null || _c === void 0 ? void 0 : _c.en) || p.address || ((_d = p.location) === null || _d === void 0 ? void 0 : _d.address) || ((_e = p.location) === null || _e === void 0 ? void 0 : _e.city) || '');
-            const addrEs = stripAccents(((_f = p.address) === null || _f === void 0 ? void 0 : _f.es) || p.address || ((_g = p.location) === null || _g === void 0 ? void 0 : _g.address) || ((_h = p.location) === null || _h === void 0 ? void 0 : _h.city) || '');
+            const address = p.address || ((_c = p.location) === null || _c === void 0 ? void 0 : _c.address) || ((_d = p.location) === null || _d === void 0 ? void 0 : _d.city) || '';
+            const addrEn = stripAccents(typeof address === 'string' ? address : address.en || address.es || '');
+            const addrEs = stripAccents(typeof address === 'string' ? address : address.es || address.en || '');
             const nameText = `${nameEn} ${nameEs}`.trim();
             const addrText = `${addrEn} ${addrEs}`.trim();
             const fullText = `${nameText} ${addrText}`.trim();
@@ -637,7 +653,7 @@ const getAllPlaces = async (query, isAdminOrEditor = false, accessibleMapIds = [
             // Multi-word search (e.g. "San Sebastian", "Cascada Gozalandia")
             if (wordsClean.length > 1) {
                 if (score === 0) {
-                    const allWordsPresent = wordsClean.every(w => fullText.includes(w));
+                    const allWordsPresent = wordsClean.every(w => [w, ...(commonSearchSynonyms[w] || [])].some(term => fullText.includes(term)));
                     if (allWordsPresent) {
                         score += 350;
                     }
@@ -745,6 +761,7 @@ const getPlaceById = async (id) => {
             _id: business._id.toString(),
             type: 'Business',
             placeType: 'Business',
+            sourceCollection: 'business',
             status: placeStatus,
             media: (((_a = business.media) === null || _a === void 0 ? void 0 : _a.photos) || []).filter(Boolean),
             menuImages: ((_b = business.media) === null || _b === void 0 ? void 0 : _b.menu) ? [business.media.menu] : [],
@@ -772,7 +789,7 @@ const incrementOpenCount = async (id) => {
     return result;
 };
 const updatePlace = async (id, payload) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
     const isExist = await place_model_1.Place.findById(id);
     if (!isExist) {
         // Fallback: Check and update Business collection
@@ -780,6 +797,10 @@ const updatePlace = async (id, payload) => {
         if (!isBusiness) {
             throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Place not found');
         }
+        if (payload.type && payload.type !== 'Business') {
+            throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Registered businesses must keep their Business type');
+        }
+        payload = (0, place_fields_1.scopePlaceFields)(payload, 'Business');
         await processPlaceTranslations(payload, isBusiness);
         // Map payload from Place structure back to Business schema format
         const businessPayload = {};
@@ -789,6 +810,10 @@ const updatePlace = async (id, payload) => {
             businessPayload.category = payload.category;
         if (payload.description)
             businessPayload.description = payload.description;
+        for (const key of ['access', 'accessibility', 'recommendations', 'services', 'atmosphere']) {
+            if (payload[key] !== undefined)
+                businessPayload[key] = payload[key];
+        }
         // Address & coordinates mapping
         if (payload.address || ((_a = payload.location) === null || _a === void 0 ? void 0 : _a.coordinates)) {
             businessPayload.location = {
@@ -809,19 +834,22 @@ const updatePlace = async (id, payload) => {
                 photos: payload.media,
             };
         }
-        if (payload.menuImages && payload.menuImages.length > 0) {
+        if (payload.menuImages !== undefined) {
+            if (payload.menuImages.length > 1) {
+                throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Registered businesses support one menu file');
+            }
             businessPayload.media = {
                 ...(businessPayload.media || isBusiness.media || {}),
-                menu: payload.menuImages[0], // Business schema holds a single string for menu
+                menu: payload.menuImages[0] || '',
             };
         }
         // Phone, website, instagram
-        if (payload.phone || payload.website || payload.instagram) {
+        if (payload.phone !== undefined || payload.website !== undefined || payload.instagram !== undefined) {
             businessPayload.contact = {
                 ...(isBusiness.contact || {}),
-                ...(payload.phone && { phone: payload.phone }),
-                ...(payload.website && { website: payload.website }),
-                ...(payload.instagram && { instagram: payload.instagram }),
+                ...(payload.phone !== undefined && { phone: payload.phone }),
+                ...(payload.website !== undefined && { website: payload.website }),
+                ...(payload.instagram !== undefined && { instagram: payload.instagram }),
             };
         }
         // Hours / Schedule — support full operatingHours object { Monday: { open, close, closed } }
@@ -856,6 +884,7 @@ const updatePlace = async (id, payload) => {
                 ...updatedBusiness.toObject(),
                 type: 'Business',
                 placeType: 'Business',
+                sourceCollection: 'business',
                 status: placeStatus,
                 media: (((_c = updatedBusiness.media) === null || _c === void 0 ? void 0 : _c.photos) || []).filter(Boolean),
                 menuImages: ((_d = updatedBusiness.media) === null || _d === void 0 ? void 0 : _d.menu) ? [updatedBusiness.media.menu] : [],
@@ -866,13 +895,19 @@ const updatePlace = async (id, payload) => {
                     coordinates: ((_h = (_g = updatedBusiness.location) === null || _g === void 0 ? void 0 : _g.mapLocation) === null || _h === void 0 ? void 0 : _h.coordinates) || [],
                 },
                 map: { name: (_j = updatedBusiness.location) === null || _j === void 0 ? void 0 : _j.country },
+                operatingHours: ((_k = updatedBusiness.hours) === null || _k === void 0 ? void 0 : _k.schedule) || null,
+                phone: ((_l = updatedBusiness.contact) === null || _l === void 0 ? void 0 : _l.phone) || '',
+                website: ((_m = updatedBusiness.contact) === null || _m === void 0 ? void 0 : _m.website) || '',
+                instagram: ((_o = updatedBusiness.contact) === null || _o === void 0 ? void 0 : _o.instagram) || '',
             };
         }
         return null;
     }
+    const effectiveType = payload.type || isExist.type || 'Regular';
+    payload = (0, place_fields_1.scopePlaceFields)(payload, effectiveType);
     await processPlaceTranslations(payload, isExist);
-    const nextCoords = (_k = payload.location) === null || _k === void 0 ? void 0 : _k.coordinates;
-    const prevCoords = (_l = isExist.location) === null || _l === void 0 ? void 0 : _l.coordinates;
+    const nextCoords = (_p = payload.location) === null || _p === void 0 ? void 0 : _p.coordinates;
+    const prevCoords = (_q = isExist.location) === null || _q === void 0 ? void 0 : _q.coordinates;
     const COORD_EPSILON = 1e-6;
     const coordsChanged = !!nextCoords &&
         (!prevCoords ||
@@ -915,13 +950,12 @@ const updatePlace = async (id, payload) => {
         if (nextMedia) {
             payload.media = nextMedia.length > 0 ? nextMedia : isExist.media;
         }
-        const nextMenu = Array.isArray(payload.menuImages)
-            ? payload.menuImages.filter(Boolean)
-            : undefined;
-        if (nextMenu) {
-            payload.menuImages = nextMenu.length > 0 ? nextMenu : isExist.menuImages;
-        }
-        const result = await place_model_1.Place.findByIdAndUpdate(id, payload, {
+        if (Array.isArray(payload.menuImages))
+            payload.menuImages = payload.menuImages.filter(Boolean);
+        const result = await place_model_1.Place.findByIdAndUpdate(id, {
+            $set: payload,
+            $unset: Object.fromEntries((0, place_fields_1.inactivePlaceFields)(effectiveType).map(key => [key, 1])),
+        }, {
             new: true,
             runValidators: true,
             session,

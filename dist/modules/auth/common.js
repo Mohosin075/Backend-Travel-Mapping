@@ -14,45 +14,12 @@ const emailTemplate_1 = require("../../shared/emailTemplate");
 const emailHelper_1 = require("../../helpers/emailHelper");
 // import { emailQueue } from '../../helpers/bull-mq-producer'
 const handleLoginLogic = async (payload, isUserExist) => {
-    const { authentication, verified, status, password } = isUserExist;
-    const { restrictionLeftAt, wrongLoginAttempts } = authentication;
-    if (!verified) {
-        //send otp to user
-        const isInviteAccept = !password;
-        const otp = (0, crypto_1.generateOtp)();
-        const otpExpiresIn = new Date(Date.now() + (isInviteAccept ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000));
-        const authentication = {
-            email: payload.email,
-            oneTimeCode: otp,
-            expiresAt: otpExpiresIn,
-            latestRequestAt: new Date(),
-            authType: 'createAccount',
-        };
-        await user_model_1.User.findByIdAndUpdate(isUserExist._id, {
-            $set: {
-                authentication,
-            },
-        });
-        if (isInviteAccept) {
-            const invitationEmail = emailTemplate_1.emailTemplate.userInvitation({
-                email: isUserExist.email,
-                role: isUserExist.role || 'user',
-                otp,
-            });
-            emailHelper_1.emailHelper.sendEmail(invitationEmail);
-        }
-        else {
-            const otpTemplate = emailTemplate_1.emailTemplate.createAccount({
-                name: isUserExist.name || 'there',
-                email: isUserExist.email,
-                otp,
-            });
-            emailHelper_1.emailHelper.sendEmail(otpTemplate);
-        }
-        return (0, exports.authResponse)(http_status_codes_1.StatusCodes.OK, `An OTP has been sent to your ${payload.email}. Please verify.`, undefined, undefined, undefined, undefined, isInviteAccept);
-    }
+    const { verified, status, password } = isUserExist;
+    const authentication = isUserExist.authentication || {};
+    isUserExist.authentication = authentication;
+    const { restrictionLeftAt, wrongLoginAttempts = 0 } = authentication;
     if (status === user_1.USER_STATUS.DELETED) {
-        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'No account found with this email');
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This account has been deleted. Please contact support or use another email.');
     }
     if (status === user_1.USER_STATUS.INACTIVE) {
         if (restrictionLeftAt && new Date() < restrictionLeftAt) {
@@ -68,7 +35,19 @@ const handleLoginLogic = async (payload, isUserExist) => {
             },
         });
     }
-    const isPasswordMatched = await user_model_1.User.isPasswordMatched(payload.password, password);
+    if (!password && isUserExist.provider === 'guest_purchase') {
+        return {
+            status: http_status_codes_1.StatusCodes.OK,
+            message: "You haven't set a password yet. Verify your email to set one.",
+            passwordSetupRequired: true,
+        };
+    }
+    if (!password && verified) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'This account has no password. Continue with Google or verify your email to set a password.');
+    }
+    // Existing password accounts must prove their password before receiving a
+    // signup verification redirect. Passwordless invitations keep their OTP flow.
+    const isPasswordMatched = !password || await user_model_1.User.isPasswordMatched(payload.password, password);
     if (!isPasswordMatched) {
         isUserExist.authentication.wrongLoginAttempts = wrongLoginAttempts + 1;
         if (isUserExist.authentication.wrongLoginAttempts >= 5) {
@@ -83,6 +62,20 @@ const handleLoginLogic = async (payload, isUserExist) => {
             },
         });
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Incorrect password, please try again.');
+    }
+    if (!verified) {
+        const isInviteAccept = !password;
+        const otp = (0, crypto_1.generateOtp)();
+        const otpExpiresIn = new Date(Date.now() + (isInviteAccept ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000));
+        await user_model_1.User.findByIdAndUpdate(isUserExist._id, { $set: { authentication: {
+                    email: isUserExist.email, oneTimeCode: otp, expiresAt: otpExpiresIn,
+                    latestRequestAt: new Date(), authType: 'createAccount',
+                } } });
+        const template = isInviteAccept
+            ? emailTemplate_1.emailTemplate.userInvitation({ email: isUserExist.email, role: isUserExist.role || 'user', otp })
+            : emailTemplate_1.emailTemplate.createAccount({ name: isUserExist.name || 'there', email: isUserExist.email, otp });
+        emailHelper_1.emailHelper.sendEmail(template);
+        return (0, exports.authResponse)(http_status_codes_1.StatusCodes.OK, `An OTP has been sent to your ${isUserExist.email}. Please verify.`, undefined, undefined, undefined, undefined, isInviteAccept);
     }
     await user_model_1.User.findByIdAndUpdate(isUserExist._id, {
         $set: {

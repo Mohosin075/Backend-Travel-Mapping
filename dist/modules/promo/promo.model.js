@@ -9,6 +9,12 @@ const promoLinkSchema = new mongoose_1.Schema({
         unique: true,
         index: true,
     },
+    checkoutReservationId: { type: String, default: null },
+    checkoutUserId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', default: null },
+    checkoutMapId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Map', default: null },
+    checkoutExpiresAt: { type: Date, default: null },
+    checkoutSessionId: { type: String, default: null },
+    checkoutReturnOrigin: { type: String, default: null },
     mapId: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: 'Map',

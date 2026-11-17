@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.stripeService = void 0;
 const stripe_1 = __importDefault(require("stripe"));
 const config_1 = __importDefault(require("../../config"));
+const ApiError_1 = __importDefault(require("../../errors/ApiError"));
+const http_status_codes_1 = require("http-status-codes");
 class StripeService {
     constructor() {
         if (!config_1.default.stripe.stripeSecretKey) {
@@ -55,7 +57,11 @@ class StripeService {
     }
     // Subscription Management
     async createSubscription(params) {
+        var _a;
         try {
+            if ((_a = config_1.default.stripe) === null || _a === void 0 ? void 0 : _a.automaticTaxEnabled) {
+                throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Please use subscription Checkout so applicable tax can be calculated from your billing address.');
+            }
             const subscriptionParams = {
                 customer: params.customerId,
                 items: [{ price: params.priceId }],
@@ -176,8 +182,14 @@ class StripeService {
     }
     // Checkout Session
     async createCheckoutSession(params) {
+        var _a;
         try {
             const sessionParams = {
+                ...(((_a = config_1.default.stripe) === null || _a === void 0 ? void 0 : _a.automaticTaxEnabled) ? {
+                    automatic_tax: { enabled: true },
+                    billing_address_collection: 'required',
+                    customer_update: { address: 'auto' },
+                } : {}),
                 customer: params.customerId,
                 payment_method_types: ['card'],
                 line_items: [
@@ -256,8 +268,10 @@ class StripeService {
         }
     }
     async createPrice(params) {
+        var _a;
         try {
             const price = await this.stripe.prices.create({
+                ...(((_a = config_1.default.stripe) === null || _a === void 0 ? void 0 : _a.automaticTaxEnabled) ? { tax_behavior: 'exclusive' } : {}),
                 product: params.productId,
                 unit_amount: params.unitAmount,
                 currency: params.currency,

@@ -12,28 +12,31 @@ const token_service_1 = require("../../token/token.service");
 const ApiError_1 = __importDefault(require("../../../errors/ApiError"));
 const customLogin = (0, catchAsync_1.default)(async (req, res) => {
     const { ...loginData } = req.body;
-    console.log(loginData);
     const result = await custom_auth_service_1.CustomAuthServices.customLogin(loginData);
-    const { status, message, accessToken, refreshToken, role } = result;
-    res.cookie('refreshToken', refreshToken, {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-    });
+    const { status, message, accessToken, refreshToken, role, passwordSetupRequired } = result;
+    if (refreshToken)
+        res.cookie('refreshToken', refreshToken, {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        });
     (0, sendResponse_1.default)(res, {
         statusCode: status,
         success: true,
         message: message,
-        data: { accessToken, refreshToken, role },
+        data: { accessToken, refreshToken, role, passwordSetupRequired },
     });
 });
 const adminLogin = (0, catchAsync_1.default)(async (req, res) => {
     const { ...loginData } = req.body;
     const result = await custom_auth_service_1.CustomAuthServices.adminLogin(loginData);
     const { status, message, accessToken, refreshToken, role } = result;
-    res.cookie('refreshToken', refreshToken, {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-    });
+    if (refreshToken)
+        res.cookie('refreshToken', refreshToken, {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        });
     (0, sendResponse_1.default)(res, {
         statusCode: status,
         success: true,
@@ -43,7 +46,7 @@ const adminLogin = (0, catchAsync_1.default)(async (req, res) => {
 });
 const forgetPassword = (0, catchAsync_1.default)(async (req, res) => {
     const { email, phone } = req.body;
-    const result = await custom_auth_service_1.CustomAuthServices.forgetPassword(email.toLowerCase().trim(), phone);
+    const result = await custom_auth_service_1.CustomAuthServices.forgetPassword(email === null || email === void 0 ? void 0 : email.toLowerCase().trim(), phone);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
@@ -77,6 +80,7 @@ const verifyAccount = (0, catchAsync_1.default)(async (req, res) => {
         res.cookie('refreshToken', refreshToken, {
             secure: process.env.NODE_ENV === 'production',
             httpOnly: true,
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         });
     }
     (0, sendResponse_1.default)(res, {
@@ -146,10 +150,12 @@ const socialLogin = (0, catchAsync_1.default)(async (req, res) => {
     const { appId, deviceToken } = req.body;
     const result = await custom_auth_service_1.CustomAuthServices.socialLogin(appId, deviceToken);
     const { status, message, accessToken, refreshToken, role } = result;
-    res.cookie('refreshToken', refreshToken, {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-    });
+    if (refreshToken)
+        res.cookie('refreshToken', refreshToken, {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        });
     (0, sendResponse_1.default)(res, {
         statusCode: status,
         success: true,
@@ -160,7 +166,8 @@ const socialLogin = (0, catchAsync_1.default)(async (req, res) => {
 const logout = (0, catchAsync_1.default)(async (req, res) => {
     const userId = req.user.authId;
     const result = await token_service_1.TokenServices.logout(userId);
-    res.clearCookie('refreshToken');
+    res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', path: '/' });
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,

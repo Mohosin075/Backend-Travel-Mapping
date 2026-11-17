@@ -151,7 +151,6 @@ class SubscriptionService {
                 await stripe_service_1.stripeService.attachPaymentMethod(request.paymentMethodId, stripeCustomerId);
                 await stripe_service_1.stripeService.setDefaultPaymentMethod(stripeCustomerId, request.paymentMethodId);
             }
-            console.log('Metadata', userId, request.planId, request.businessId);
             // Create Stripe subscription
             const stripeSubscription = await stripe_service_1.stripeService.createSubscription({
                 customerId: stripeCustomerId,
@@ -209,8 +208,6 @@ class SubscriptionService {
             await email_notification_service_1.emailNotificationService.sendSubscriptionWelcomeEmail(subscription, plan, !!stripeSubscription.trial_start);
             // Get client secret for payment confirmation if needed
             let clientSecret;
-            console.log('--- Debugging Subscription ---');
-            console.log('Subscription Status:', stripeSubscription.status);
             // Try getting from latest invoice's payment intent
             if (stripeSubscription.latest_invoice &&
                 typeof stripeSubscription.latest_invoice === 'object') {
@@ -219,12 +216,6 @@ class SubscriptionService {
                     typeof invoice.payment_intent === 'object') {
                     clientSecret =
                         invoice.payment_intent.client_secret || undefined;
-                    console.log('Client Secret found in latest_invoice.payment_intent');
-                }
-                else if (invoice.payment_intent &&
-                    typeof invoice.payment_intent === 'string') {
-                    // If it's a string, it means it wasn't expanded properly
-                    console.log('Payment Intent found as string, but not expanded:', invoice.payment_intent);
                 }
             }
             // If still undefined, try setup_intent (common for free trials or setup flow)
@@ -233,14 +224,8 @@ class SubscriptionService {
                     clientSecret =
                         stripeSubscription.pending_setup_intent.client_secret ||
                             undefined;
-                    console.log('Client Secret found in pending_setup_intent');
-                }
-                else {
-                    console.log('Pending Setup Intent found as string, but not expanded:', stripeSubscription.pending_setup_intent);
                 }
             }
-            console.log('Final clientSecret:', clientSecret);
-            console.log('------------------------------');
             console.log(`Subscription created for user ${userId}: ${subscription._id}`);
             return {
                 subscription: await subscription.populate(['planId']),
@@ -548,7 +533,6 @@ class SubscriptionService {
     async createCheckoutSession(userId, planId, businessId, successUrl, cancelUrl) {
         try {
             const user = await user_model_1.User.findById(userId).select('+email');
-            console.log({ user });
             if (!user) {
                 throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'User not found');
             }

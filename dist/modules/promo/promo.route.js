@@ -12,6 +12,7 @@ const promo_validation_1 = require("./promo.validation");
 const promo_controller_1 = require("./promo.controller");
 const router = express_1.default.Router();
 router.get('/verify', promo_controller_1.PromoControllers.verifyPromoCode);
+router.post('/verify-payment', (0, auth_1.default)(user_1.USER_ROLES.USER, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(promo_validation_1.PromoValidations.verifyPayment), promo_controller_1.PromoControllers.verifyPromoPayment);
 router.post('/claim', (0, auth_1.default)(user_1.USER_ROLES.USER, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(promo_validation_1.PromoValidations.claimPromoZodSchema), promo_controller_1.PromoControllers.claimFreePromo);
 router.post('/create-checkout-session', (0, auth_1.default)(user_1.USER_ROLES.USER, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(promo_validation_1.PromoValidations.createPromoCheckoutSessionZodSchema), promo_controller_1.PromoControllers.createPromoCheckoutSession);
 router.post('/bulk-generate', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN), (0, validateRequest_1.default)(promo_validation_1.PromoValidations.bulkGeneratePromoZodSchema), promo_controller_1.PromoControllers.bulkGeneratePromoLinks);

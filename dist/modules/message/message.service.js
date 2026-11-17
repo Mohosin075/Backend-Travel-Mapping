@@ -12,7 +12,6 @@ const http_status_codes_1 = require("http-status-codes");
 const user_model_1 = require("../user/user.model");
 const chat_model_1 = require("../chat/chat.model");
 const sendMessageToDB = async (payload) => {
-    console.log(payload);
     if (!mongoose_1.default.Types.ObjectId.isValid(payload.receiver)) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid Receiver ID');
     }

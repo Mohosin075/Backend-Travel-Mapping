@@ -59,12 +59,6 @@ const getCategoryById = (0, catchAsync_1.default)(async (req, res) => {
 });
 const updateCategory = (0, catchAsync_1.default)(async (req, res) => {
     const id = (req.params && req.params.id) || (req.body && req.body.id);
-    console.log('Category update request:', {
-        method: req.method,
-        url: req.originalUrl,
-        params: req.params,
-        body: req.body && typeof req.body === 'object' ? { ...req.body } : req.body,
-    });
     if (!id) {
         return (0, sendResponse_1.default)(res, {
             statusCode: http_status_codes_1.StatusCodes.BAD_REQUEST,

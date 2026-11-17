@@ -17,6 +17,7 @@ const place_constants_1 = require("../place/place.constants");
 const business_constants_1 = require("../business/business.constants");
 const autoTranslate_1 = require("../../utils/autoTranslate");
 const notification_integration_1 = require("../notification/notification.integration");
+const placePrivacy_1 = require("../../helpers/placePrivacy");
 const processMapTranslations = async (payload) => {
     if (payload.name) {
         if (typeof payload.name === 'string') {
@@ -42,6 +43,7 @@ const createMap = async (payload) => {
     return result;
 };
 const getAllMaps = async (query) => {
+    var _a;
     let mapIds = [];
     // If category filter is provided, find maps that contain places with those categories
     if (query.category) {
@@ -63,7 +65,10 @@ const getAllMaps = async (query) => {
             };
         }
         // Add map ID filtering to the query
-        query._id = { $in: mapIds };
+        const assignedIds = (_a = query._id) === null || _a === void 0 ? void 0 : _a.$in;
+        query._id = { $in: assignedIds
+                ? mapIds.filter(id => assignedIds.some((assigned) => String(assigned) === String(id)))
+                : mapIds };
         delete query.category; // Remove category from query as it's not a field in Map model
     }
     // Select only the fields needed for the list view — do NOT populate places (it's huge)
@@ -196,11 +201,16 @@ const getAvailableCountries = async () => {
 const DISCOVERY_PLACE_FIELDS = 'name type status category map country address rating totalReview location media description entryCost hikeTime difficulty atmosphere schedules createdAt';
 const DISCOVERY_BUSINESS_FIELDS = 'name status category location rating totalReview hasActiveSubscription media description createdAt';
 const DISCOVERY_MAX_FETCH = 2000;
-const getDiscoveryData = async (query, lockedMapIds, isAdminOrEditor = false, preloadedMapObj) => {
+const getDiscoveryData = async (query, lockedMapIds, isAdminOrEditor = false, preloadedMapObj, editorMapIds) => {
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
     // Prepare separate queries because Place and Business have different schemas
     const placeQueryObj = { ...query };
+    if (editorMapIds) {
+        placeQueryObj.$and = [
+            { $or: [{ status: 'Published' }, { map: { $in: editorMapIds } }] },
+        ];
+    }
     // Business has its own status vocabulary (Approved/Pending/Rejected) — never inherit the Place status from query
     const { status: _ignoredStatus, ...businessQueryObjBase } = query;
     const businessQueryObj = { ...businessQueryObjBase };
@@ -268,10 +278,10 @@ const getDiscoveryData = async (query, lockedMapIds, isAdminOrEditor = false, pr
     const formattedPlaces = places.map(place => {
         var _a;
         const mapId = ((_a = place.map) === null || _a === void 0 ? void 0 : _a._id) || place.map;
-        const isLocked = mapId && lockedMapIds && lockedMapIds.includes(mapId.toString()) && place.type !== 'Business';
+        const isLocked = place.type !== 'Business' && ((mapId && (lockedMapIds === null || lockedMapIds === void 0 ? void 0 : lockedMapIds.includes(mapId.toString()))) ||
+            (!mapId && (!isAdminOrEditor || editorMapIds !== undefined)));
         return {
-            ...place,
-            ...(isLocked ? { entryCost: undefined, hikeTime: undefined, difficulty: undefined, atmosphere: undefined, schedules: undefined } : {}),
+            ...(isLocked ? (0, placePrivacy_1.lockedPlaceTeaser)(place) : place),
             media: Array.isArray(place.media) ? place.media.filter(Boolean) : [],
             placeType: place.type,
             type: 'place',
@@ -385,10 +395,12 @@ const getDiscoveryData = async (query, lockedMapIds, isAdminOrEditor = false, pr
             placeCoordSet.add(coordKey);
         deduplicatedPlaces.push(p);
     }
-    let result = [...deduplicatedPlaces, ...deduplicatedBusinesses];
+    let result = isAdminOrEditor
+        ? [...formattedPlaces, ...formattedBusinesses]
+        : [...deduplicatedPlaces, ...deduplicatedBusinesses];
     // If there's a searchTerm, we might want to sort by relevance or alphabetically
     if (query.searchTerm) {
-        result.sort((a, b) => a.name.localeCompare(b.name));
+        result.sort((a, b) => { var _a, _b; return String(((_a = a.name) === null || _a === void 0 ? void 0 : _a.en) || a.name || '').localeCompare(String(((_b = b.name) === null || _b === void 0 ? void 0 : _b.en) || b.name || '')); });
     }
     else if (query.sort) {
         // Basic sorting on combined results if needed

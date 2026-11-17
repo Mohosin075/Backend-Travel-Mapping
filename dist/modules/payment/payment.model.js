@@ -8,6 +8,8 @@ const paymentSchema = new mongoose_1.Schema({
         ref: 'User',
         required: true,
     },
+    guestCheckoutKey: { type: String },
+    promoCheckoutKey: { type: String },
     mapId: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: 'Map',
@@ -25,6 +27,10 @@ const paymentSchema = new mongoose_1.Schema({
         type: String,
         default: 'USD',
     },
+    subtotalAmount: { type: Number, min: 0 },
+    taxAmount: { type: Number, min: 0 },
+    discountAmount: { type: Number, min: 0 },
+    taxCountry: { type: String },
     paymentMethod: {
         type: String,
         enum: ['stripe'],
@@ -57,5 +63,9 @@ const paymentSchema = new mongoose_1.Schema({
     toObject: { virtuals: true },
 });
 paymentSchema.index({ userId: 1 });
+paymentSchema.index({ guestCheckoutKey: 1 }, { unique: true, sparse: true });
+paymentSchema.index({ promoCheckoutKey: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ paymentIntentId: 1 });
+paymentSchema.index({ status: 1, createdAt: -1 });
+paymentSchema.index({ mapId: 1, status: 1, createdAt: -1 });
 exports.Payment = (0, mongoose_1.model)('Payment', paymentSchema);

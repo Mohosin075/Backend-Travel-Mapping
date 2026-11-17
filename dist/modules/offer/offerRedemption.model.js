@@ -12,4 +12,6 @@ const OfferRedemptionSchema = new mongoose_1.Schema({
 });
 // Index for performance and checking duplicate redemptions if needed
 OfferRedemptionSchema.index({ user: 1, offer: 1 });
+OfferRedemptionSchema.index({ offer: 1, redemptionTime: -1 });
+OfferRedemptionSchema.index({ redemptionTime: -1 });
 exports.OfferRedemption = (0, mongoose_1.model)('OfferRedemption', OfferRedemptionSchema);

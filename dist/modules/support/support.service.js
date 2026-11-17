@@ -13,7 +13,6 @@ const support_1 = require("../../enum/support");
 const user_model_1 = require("../user/user.model");
 const user_1 = require("../../enum/user");
 const createSupport = async (user, payload) => {
-    console.log({ user, payload });
     const data = {
         ...payload,
         userId: user === null || user === void 0 ? void 0 : user.authId,

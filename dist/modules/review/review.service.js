@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewService = void 0;
 const http_status_codes_1 = require("http-status-codes");
+const profilePrivacy_1 = require("../../helpers/profilePrivacy");
 const ApiError_1 = __importDefault(require("../../errors/ApiError"));
 const review_model_1 = require("./review.model");
 const mongoose_1 = __importDefault(require("mongoose"));
@@ -129,11 +130,11 @@ const createReview = async (user, payload) => {
     }
     return result;
 };
-const getAllReviews = async (paginationOptions, filter = {}) => {
+const getAllReviews = async (paginationOptions, filter = {}, requester) => {
     const { page, limit, skip, sortBy, sortOrder } = paginationHelper_1.paginationHelper.calculatePagination(paginationOptions);
     const [result, total] = await Promise.all([
         review_model_1.Review.find(filter)
-            .populate('reviewer', 'name profile level purchasedMaps')
+            .populate('reviewer', 'name profile level purchasedMaps settings.profileStatus')
             .populate({
             path: 'placeId',
             select: 'name media map address category country',
@@ -152,10 +153,10 @@ const getAllReviews = async (paginationOptions, filter = {}) => {
             total,
             totalPages: Math.ceil(total / limit),
         },
-        data: result,
+        data: result.map(review => (0, profilePrivacy_1.sanitizeReviewIdentity)(review, requester)),
     };
 };
-const getReviewsByPlace = async (placeId, paginationOptions, userId) => {
+const getReviewsByPlace = async (placeId, paginationOptions, userId, userRole) => {
     // If this ID is a Business, automatically query by businessId
     const isBusiness = await business_model_1.Business.exists({ _id: placeId });
     const targetFilter = isBusiness ? { businessId: placeId } : { placeId };
@@ -166,9 +167,9 @@ const getReviewsByPlace = async (placeId, paginationOptions, userId) => {
             ...(userId ? [{ reviewer: userId }] : []),
         ],
     };
-    return await getAllReviews(paginationOptions, filter);
+    return await getAllReviews(paginationOptions, filter, { authId: userId, role: userRole });
 };
-const getReviewsByBusiness = async (businessId, paginationOptions, userId) => {
+const getReviewsByBusiness = async (businessId, paginationOptions, userId, userRole) => {
     // If this ID is a Place, automatically query by placeId
     const isPlace = await place_model_1.Place.exists({ _id: businessId });
     const targetFilter = isPlace ? { placeId: businessId } : { businessId };
@@ -179,7 +180,7 @@ const getReviewsByBusiness = async (businessId, paginationOptions, userId) => {
             ...(userId ? [{ reviewer: userId }] : []),
         ],
     };
-    return await getAllReviews(paginationOptions, filter);
+    return await getAllReviews(paginationOptions, filter, { authId: userId, role: userRole });
 };
 const updateReview = async (user, id, payload) => {
     var _a;
@@ -286,15 +287,15 @@ const deleteReview = async (user, id) => {
         await session.endSession();
     }
 };
-const getSingleReview = async (id) => {
-    const result = await review_model_1.Review.findById(id).populate('reviewer', 'name profile');
+const getSingleReview = async (id, requester) => {
+    const result = await review_model_1.Review.findById(id).populate('reviewer', 'name profile settings.profileStatus');
     if (!result) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Review not found.');
     }
-    return result;
+    return (0, profilePrivacy_1.sanitizeReviewIdentity)(result, requester);
 };
 const getMyReviews = async (user, paginationOptions) => {
-    return await getAllReviews(paginationOptions, { reviewer: user.authId });
+    return await getAllReviews(paginationOptions, { reviewer: user.authId }, user);
 };
 const approveReview = async (id) => {
     var _a, _b, _c;

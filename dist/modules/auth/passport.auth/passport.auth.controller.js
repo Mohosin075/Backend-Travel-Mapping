@@ -12,19 +12,20 @@ const config_1 = __importDefault(require("../../../config"));
 const login = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
     const { deviceToken, password } = req.body;
-    const result = await common_1.AuthCommonServices.handleLoginLogic({ deviceToken: deviceToken, password: password }, user);
-    const { status, message, accessToken, refreshToken, role, needPassword } = result;
+    const result = await common_1.AuthCommonServices.handleLoginLogic({ deviceToken, password, email: user.email, rememberMe: req.body.rememberMe }, user);
+    const { status, message, accessToken, refreshToken, role, needPassword, passwordSetupRequired } = result;
     if (refreshToken) {
         res.cookie('refreshToken', refreshToken, {
             secure: config_1.default.node_env === 'production',
             httpOnly: true,
+            sameSite: config_1.default.node_env === 'production' ? 'none' : 'lax',
         });
     }
     (0, sendResponse_1.default)(res, {
         statusCode: status,
         success: true,
         message: message,
-        data: { accessToken, refreshToken, role, needPassword },
+        data: { accessToken, refreshToken, role, needPassword, passwordSetupRequired },
     });
 });
 const googleAuthCallback = (0, catchAsync_1.default)(async (req, res) => {
@@ -44,7 +45,7 @@ const googleAuthCallback = (0, catchAsync_1.default)(async (req, res) => {
     if (req.query.state) {
         try {
             const decodedRedirect = Buffer.from(req.query.state, 'base64').toString('ascii');
-            if (decodedRedirect.startsWith('/')) {
+            if (decodedRedirect.startsWith('/') && !decodedRedirect.startsWith('//') && !decodedRedirect.includes('\\')) {
                 redirectUrl += `&redirect=${encodeURIComponent(decodedRedirect)}`;
             }
         }

@@ -10,6 +10,7 @@ const business_service_1 = require("../business/business.service");
 const map_service_1 = require("../map/map.service");
 const place_service_1 = require("../place/place.service");
 const usageView_model_1 = require("./usageView.model");
+const usageViewDay_model_1 = require("./usageViewDay.model");
 const VIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 const isObjectId = (id) => typeof id === 'string' && /^[a-fA-F0-9]{24}$/.test(id);
 const normalizeUsageType = (type) => {
@@ -48,12 +49,19 @@ const handshakeToken = (socket) => {
     return typeof raw === 'string' ? raw : undefined;
 };
 const viewerKeys = (socket, payload) => {
-    const authId = readAuthId(payload === null || payload === void 0 ? void 0 : payload.token) || readAuthId(handshakeToken(socket));
+    var _a;
+    // An explicit guest/expired token must not reuse another account's old handshake.
+    const authId = (payload === null || payload === void 0 ? void 0 : payload.token) !== undefined
+        ? readAuthId(payload.token)
+        : readAuthId(handshakeToken(socket));
     if (authId) {
         // Authenticated users are tracked strictly by user ID so distinct accounts
         // on the same device/browser are tracked independently.
         return [`user:${authId}`];
     }
+    // A failed account token is not a genuine guest. Let HTTP refresh/retry it.
+    if ((_a = payload === null || payload === void 0 ? void 0 : payload.token) === null || _a === void 0 ? void 0 : _a.trim())
+        return [];
     const guestId = String((payload === null || payload === void 0 ? void 0 : payload.visitorId) || '').trim();
     if (guestId && guestId.length >= 8 && guestId.length <= 80) {
         return [`guest:${guestId}`];
@@ -85,6 +93,22 @@ const recordUniqueUsage = async (socket, payload) => {
     if (!type || !isObjectId(entityId) || keys.length === 0)
         return;
     const now = new Date();
+    const recordDay = async (seenAt = now) => {
+        // Match the server calendar used by the report date filters.
+        const day = `${seenAt.getFullYear()}-${seenAt.getMonth() + 1}-${seenAt.getDate()}`;
+        const _id = `${type}:${entityId}:${keys[0]}:${day}`;
+        try {
+            await usageViewDay_model_1.UsageViewDay.updateOne({ _id }, {
+                $setOnInsert: { viewerKey: keys[0], type, entityId },
+                $max: { lastSeenAt: seenAt },
+            }, { upsert: true });
+        }
+        catch (error) {
+            if ((error === null || error === void 0 ? void 0 : error.code) !== 11000)
+                throw error;
+            await usageViewDay_model_1.UsageViewDay.updateOne({ _id }, { $max: { lastSeenAt: seenAt } });
+        }
+    };
     const cutoff = new Date(now.getTime() - VIEW_WINDOW_MS);
     const existing = await usageView_model_1.UsageView.find({
         viewerKey: { $in: keys },
@@ -94,15 +118,28 @@ const recordUniqueUsage = async (socket, payload) => {
         .sort({ lastSeenAt: -1 })
         .lean();
     const latest = existing[0];
-    if (latest && latest.lastSeenAt && latest.lastSeenAt >= cutoff) {
+    // Keep the last known legacy visit before refreshing the lifetime record.
+    if ((latest === null || latest === void 0 ? void 0 : latest.lastSeenAt) && latest.lastSeenAt.toDateString() !== now.toDateString()) {
+        await recordDay(latest.lastSeenAt);
+    }
+    const lastCountedAt = (latest === null || latest === void 0 ? void 0 : latest.lastCountedAt) || (latest === null || latest === void 0 ? void 0 : latest.lastSeenAt);
+    if (latest && lastCountedAt && lastCountedAt >= cutoff) {
+        // Refresh presence on every visit without incrementing the daily view counter.
+        if (!latest.lastCountedAt) {
+            await usageView_model_1.UsageView.updateOne({ _id: latest._id, lastCountedAt: { $exists: false } }, { $set: { lastCountedAt } });
+        }
+        await usageView_model_1.UsageView.updateOne({ _id: latest._id }, { $max: { lastSeenAt: now } });
         await syncViewerKeys(keys, type, entityId, latest.lastSeenAt);
+        await recordDay();
         return;
     }
     try {
         if (latest) {
-            const updated = await usageView_model_1.UsageView.findOneAndUpdate({ _id: latest._id, lastSeenAt: { $lte: cutoff } }, { $set: { lastSeenAt: now } }, { new: true });
-            if (!updated)
+            const updated = await usageView_model_1.UsageView.findOneAndUpdate({ _id: latest._id, $or: [{ lastCountedAt: { $lte: cutoff } }, { lastCountedAt: { $exists: false }, lastSeenAt: { $lte: cutoff } }] }, { $set: { lastSeenAt: now, lastCountedAt: now } }, { new: true });
+            if (!updated) {
+                await recordDay();
                 return;
+            }
         }
         else {
             await usageView_model_1.UsageView.create({
@@ -110,12 +147,15 @@ const recordUniqueUsage = async (socket, payload) => {
                 type,
                 entityId,
                 lastSeenAt: now,
+                lastCountedAt: now,
             });
         }
     }
     catch (error) {
-        if ((error === null || error === void 0 ? void 0 : error.code) === 11000)
+        if ((error === null || error === void 0 ? void 0 : error.code) === 11000) {
+            await recordDay();
             return;
+        }
         throw error;
     }
     try {
@@ -131,5 +171,6 @@ const recordUniqueUsage = async (socket, payload) => {
         });
         throw error;
     }
+    await recordDay();
 };
 exports.recordUniqueUsage = recordUniqueUsage;

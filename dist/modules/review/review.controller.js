@@ -48,7 +48,7 @@ const getAllReviews = (0, catchAsync_1.default)(async (req, res) => {
     if (!isAdmin && !filter.status) {
         filter.status = 'Approved';
     }
-    const result = await review_service_1.ReviewService.getAllReviews(paginationOptions, filter);
+    const result = await review_service_1.ReviewService.getAllReviews(paginationOptions, filter, req.user);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
@@ -61,7 +61,7 @@ const getReviewsByPlace = (0, catchAsync_1.default)(async (req, res) => {
     const { placeId } = req.params;
     const user = await (0, mapAccessHelper_1.getUserFromToken)(req.headers.authorization);
     const paginationOptions = (0, pick_1.default)(req.query, pagination_1.paginationFields);
-    const result = await review_service_1.ReviewService.getReviewsByPlace(placeId, paginationOptions, (_a = user === null || user === void 0 ? void 0 : user._id) === null || _a === void 0 ? void 0 : _a.toString());
+    const result = await review_service_1.ReviewService.getReviewsByPlace(placeId, paginationOptions, (_a = user === null || user === void 0 ? void 0 : user._id) === null || _a === void 0 ? void 0 : _a.toString(), user === null || user === void 0 ? void 0 : user.role);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
@@ -74,7 +74,7 @@ const getReviewsByBusiness = (0, catchAsync_1.default)(async (req, res) => {
     const { businessId } = req.params;
     const user = await (0, mapAccessHelper_1.getUserFromToken)(req.headers.authorization);
     const paginationOptions = (0, pick_1.default)(req.query, pagination_1.paginationFields);
-    const result = await review_service_1.ReviewService.getReviewsByBusiness(businessId, paginationOptions, (_a = user === null || user === void 0 ? void 0 : user._id) === null || _a === void 0 ? void 0 : _a.toString());
+    const result = await review_service_1.ReviewService.getReviewsByBusiness(businessId, paginationOptions, (_a = user === null || user === void 0 ? void 0 : user._id) === null || _a === void 0 ? void 0 : _a.toString(), user === null || user === void 0 ? void 0 : user.role);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
@@ -94,7 +94,7 @@ const deleteReview = (0, catchAsync_1.default)(async (req, res) => {
 });
 const getSingleReview = (0, catchAsync_1.default)(async (req, res) => {
     const { id } = req.params;
-    const result = await review_service_1.ReviewService.getSingleReview(id);
+    const result = await review_service_1.ReviewService.getSingleReview(id, req.user);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,

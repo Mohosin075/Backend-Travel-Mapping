@@ -18,8 +18,8 @@ passport_1.default.use(new passport_local_1.Strategy({
 }, async (req, email, password, done) => {
     try {
         const isUserExist = await user_model_1.User.findOne({
-            email,
-            status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE] },
+            email: email.trim().toLowerCase(),
+            status: { $in: [user_1.USER_STATUS.ACTIVE, user_1.USER_STATUS.INACTIVE, user_1.USER_STATUS.DELETED] },
         })
             .select('+password +authentication')
             .lean();
@@ -52,7 +52,6 @@ passport_1.default.use(new passport_google_oauth20_1.Strategy({
 // Serialize the user
 passport_1.default.serializeUser((data, done) => {
     var _a;
-    console.log('Serializing user:', data);
     // If we have a DB user, store the _id; otherwise, store the whole object for social-only login
     if ((_a = data.user) === null || _a === void 0 ? void 0 : _a._id) {
         done(null, { type: 'db', id: data.user._id.toString() });
@@ -63,7 +62,6 @@ passport_1.default.serializeUser((data, done) => {
 });
 // Deserialize the user
 passport_1.default.deserializeUser(async (payload, done) => {
-    console.log('Deserializing payload:', payload);
     try {
         if (!payload)
             return done(null, null);

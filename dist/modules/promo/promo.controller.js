@@ -10,6 +10,11 @@ const sendResponse_1 = __importDefault(require("../../shared/sendResponse"));
 const promo_service_1 = require("./promo.service");
 const localize_1 = require("../../helpers/localize");
 const promoFields = ['mapId.name'];
+const verifyPromoPayment = (0, catchAsync_1.default)(async (req, res) => {
+    const user = req.user;
+    const result = await promo_service_1.PromoServices.verifyPromoPayment(user.authId, req.body.code, req.body.sessionId);
+    (0, sendResponse_1.default)(res, { statusCode: http_status_codes_1.StatusCodes.OK, success: true, message: 'Promo payment verified', data: result });
+});
 const verifyPromoCode = (0, catchAsync_1.default)(async (req, res) => {
     const { code, mapId } = req.query;
     if (!code) {
@@ -20,11 +25,12 @@ const verifyPromoCode = (0, catchAsync_1.default)(async (req, res) => {
         });
     }
     const result = await promo_service_1.PromoServices.verifyPromoCode(code, mapId);
+    const { checkoutReservationId, checkoutUserId, checkoutMapId, checkoutExpiresAt, checkoutSessionId, checkoutReturnOrigin, ...publicPromo } = result;
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: 'Promo link is valid',
-        data: result,
+        data: publicPromo,
     });
 });
 const claimFreePromo = (0, catchAsync_1.default)(async (req, res) => {
@@ -43,6 +49,7 @@ const claimFreePromo = (0, catchAsync_1.default)(async (req, res) => {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
         message: result.message,
+        data: { mapId: result.mapId, mapName: result.mapName },
     });
 });
 const createPromoCheckoutSession = (0, catchAsync_1.default)(async (req, res) => {
@@ -55,7 +62,7 @@ const createPromoCheckoutSession = (0, catchAsync_1.default)(async (req, res) =>
             message: 'User credentials not found',
         });
     }
-    const result = await promo_service_1.PromoServices.createPromoCheckoutSession(user, code, mapId);
+    const result = await promo_service_1.PromoServices.createPromoCheckoutSession(user, code, mapId, req.headers.origin);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
         success: true,
@@ -111,6 +118,7 @@ const getPromoStats = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 exports.PromoControllers = {
+    verifyPromoPayment,
     verifyPromoCode,
     claimFreePromo,
     createPromoCheckoutSession,

@@ -42,12 +42,23 @@ const getAccessibleMapIds = async (user) => {
     }
     // Map Editor — only assigned maps + maps in assigned countries
     if (fullUser && fullUser.role === user_1.USER_ROLES.MAP_EDITOR) {
-        const assignedMapIds = (fullUser.assignedMaps || []).map((id) => id.toString());
-        const assignedCountries = fullUser.assignedCountries || [];
-        const countryMaps = assignedCountries.length > 0
-            ? await map_model_1.Map.find({ country: { $in: assignedCountries } }, '_id')
-            : [];
-        const countryMapIds = countryMaps.map(m => m._id.toString());
+        const assignedMapIds = (fullUser.assignedMaps || [])
+            .map((id) => ((id === null || id === void 0 ? void 0 : id._id) ? id._id.toString() : id === null || id === void 0 ? void 0 : id.toString()))
+            .filter(Boolean);
+        const assignedCountries = (fullUser.assignedCountries || []).filter((country) => typeof country === 'string' && Boolean(country.trim()));
+        let countryMapIds = [];
+        if (assignedCountries.length > 0) {
+            const countryRegexes = assignedCountries.map((c) => new RegExp('^' + c.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'));
+            const countryMaps = await map_model_1.Map.find({
+                $or: [
+                    { country: { $in: countryRegexes } },
+                    { 'name.en': { $in: countryRegexes } },
+                    { 'name.es': { $in: countryRegexes } },
+                    { name: { $in: countryRegexes } },
+                ],
+            }, '_id');
+            countryMapIds = countryMaps.map(m => m._id.toString());
+        }
         return Array.from(new Set([...assignedMapIds, ...countryMapIds]));
     }
     // Find all free maps
@@ -64,7 +75,7 @@ exports.getAccessibleMapIds = getAccessibleMapIds;
 const http_status_codes_1 = require("http-status-codes");
 const ApiError_1 = __importDefault(require("../errors/ApiError"));
 const verifyEditorEditAccess = async (user, mapId) => {
-    var _a, _b;
+    var _a, _b, _c;
     if (!user) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.UNAUTHORIZED, 'You are not authorized.');
     }
@@ -84,8 +95,19 @@ const verifyEditorEditAccess = async (user, mapId) => {
         }
         const mapIdStr = map._id.toString();
         const mapCountry = map.country;
-        const isAssignedMap = (_a = fullUser.assignedMaps) === null || _a === void 0 ? void 0 : _a.some((id) => id.toString() === mapIdStr);
-        const isAssignedCountry = mapCountry && ((_b = fullUser.assignedCountries) === null || _b === void 0 ? void 0 : _b.includes(mapCountry));
+        const mapNameEn = typeof map.name === 'object' ? (_a = map.name) === null || _a === void 0 ? void 0 : _a.en : map.name;
+        const mapNameEs = typeof map.name === 'object' ? (_b = map.name) === null || _b === void 0 ? void 0 : _b.es : map.name;
+        const isAssignedMap = (_c = fullUser.assignedMaps) === null || _c === void 0 ? void 0 : _c.some((id) => ((id === null || id === void 0 ? void 0 : id._id) ? id._id.toString() : id === null || id === void 0 ? void 0 : id.toString()) === mapIdStr);
+        const matchesCountry = (val) => {
+            var _a;
+            if (!val || typeof val !== 'string')
+                return false;
+            const lower = val.trim().toLowerCase();
+            return (_a = fullUser.assignedCountries) === null || _a === void 0 ? void 0 : _a.some((c) => typeof c === 'string' && c.trim().toLowerCase() === lower);
+        };
+        const isAssignedCountry = matchesCountry(mapCountry) ||
+            matchesCountry(mapNameEn) ||
+            matchesCountry(mapNameEs);
         if (isAssignedMap || isAssignedCountry) {
             return true;
         }

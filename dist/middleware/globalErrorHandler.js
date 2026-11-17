@@ -19,7 +19,15 @@ const globalErrorHandler = (error, req, res, next) => {
     let statusCode = 500;
     let message = 'Something went wrong!';
     let errorMessages = [];
-    if ((error === null || error === void 0 ? void 0 : error.name) === 'validationError') {
+    if ((error === null || error === void 0 ? void 0 : error.code) === 11000) {
+        const field = Object.keys(error.keyPattern || error.keyValue || {})[0] || '';
+        statusCode = 409;
+        message = field === 'email'
+            ? 'An account with this email already exists. Please log in or use another email.'
+            : 'A record with these details already exists. Please use different details.';
+        errorMessages = [{ path: field, message }];
+    }
+    else if ((error === null || error === void 0 ? void 0 : error.name) === 'ValidationError' || (error === null || error === void 0 ? void 0 : error.name) === 'validationError') {
         const simplifiedError = (0, handleValidationError_1.default)(error);
         statusCode = simplifiedError.statusCode;
         message = ((_a = simplifiedError.errorMessages[0]) === null || _a === void 0 ? void 0 : _a.message) || message;
@@ -56,7 +64,7 @@ const globalErrorHandler = (error, req, res, next) => {
         success: false,
         message: localizedMessage,
         errorMessages: localizedErrorMessages,
-        stack: config_1.default.node_env === 'production' ? undefined : error === null || error === void 0 ? void 0 : error.stack,
+        stack: config_1.default.node_env === 'production' || (error === null || error === void 0 ? void 0 : error.code) === 11000 ? undefined : error === null || error === void 0 ? void 0 : error.stack,
     });
 };
 exports.default = globalErrorHandler;

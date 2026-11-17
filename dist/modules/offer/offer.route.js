@@ -12,6 +12,7 @@ const auth_1 = __importDefault(require("../../middleware/auth"));
 const user_1 = require("../../enum/user");
 const processReqBody_1 = require("../../middleware/processReqBody");
 const router = express_1.default.Router();
+router.get('/managed', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.MAP_EDITOR), offer_controller_1.OfferController.getManagedOffers);
 router.get('/by-place-or-business/:id', offer_controller_1.OfferController.getOffersByPlaceOrBusinessId);
 router.get('/by-place-or-business/:id/redemptions', (0, auth_1.default)(user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.USER, user_1.USER_ROLES.MAP_EDITOR), offer_controller_1.OfferController.getOfferRedemptions);
 router

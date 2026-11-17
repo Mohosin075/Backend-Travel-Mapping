@@ -4,6 +4,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StatsService = void 0;
+const recent_place_views_1 = require("./recent-place-views");
+const ApiError_1 = __importDefault(require("../../errors/ApiError"));
+const http_status_codes_1 = require("http-status-codes");
 const map_model_1 = require("../map/map.model");
 const place_model_1 = require("../place/place.model");
 const offer_model_1 = require("../offer/offer.model");
@@ -11,13 +14,13 @@ const offerRedemption_model_1 = require("../offer/offerRedemption.model");
 const user_model_1 = require("../user/user.model");
 const business_model_1 = require("../business/business.model");
 const payment_model_1 = require("../payment/payment.model");
-const usageView_model_1 = require("./usageView.model");
+const usage_reporting_1 = require("./usage-reporting");
 const visited_model_1 = require("../visited/visited.model");
 const review_model_1 = require("../review/review.model");
 const mongoose_1 = __importDefault(require("mongoose"));
 const localize_1 = require("../../helpers/localize");
 const getDashboardData = async () => {
-    var _a, _b;
+    var _a, _b, _c;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     // Run DB queries in parallel
@@ -32,7 +35,7 @@ const getDashboardData = async () => {
         user_model_1.User.find().sort({ updatedAt: -1 }).limit(3).select('name role updatedAt').lean(),
         payment_model_1.Payment.aggregate([
             { $match: { status: 'succeeded' } },
-            { $group: { _id: null, total: { $sum: '$amount' } } },
+            { $group: { _id: null, total: { $sum: '$amount' }, tax: { $sum: { $ifNull: ['$taxAmount', 0] } } } },
         ]),
         payment_model_1.Payment.aggregate([
             { $match: { status: 'succeeded', createdAt: { $gte: startOfMonth } } },
@@ -42,10 +45,10 @@ const getDashboardData = async () => {
     const totalPlaces = regularPlacesCount + businessPlacesCount;
     const realTotalSales = ((_a = paymentsTotalAgg[0]) === null || _a === void 0 ? void 0 : _a.total) || 0;
     const realMonthSales = ((_b = paymentsMonthAgg[0]) === null || _b === void 0 ? void 0 : _b.total) || 0;
-    // If real payments exist in production DB use them, otherwise compute from map data
-    const totalSales = realTotalSales > 0 ? realTotalSales : 12450;
-    const thisMonthRevenue = realMonthSales > 0 ? realMonthSales : 3280;
-    const taxesCollected = Math.round(totalSales * 0.10 * 100) / 100;
+    // Report actual persisted revenue, including zero-sales periods.
+    const totalSales = realTotalSales;
+    const thisMonthRevenue = realMonthSales;
+    const taxesCollected = Math.round((((_c = paymentsTotalAgg[0]) === null || _c === void 0 ? void 0 : _c.tax) || 0) * 100) / 100;
     const recentActivity = [];
     const getSafeStr = (val) => {
         if (!val)
@@ -275,6 +278,7 @@ const applySelectedEntity = async (query, mapFilter, placeFilter, offerFilter) =
             mapIds: [],
             usagePlace: business
                 ? {
+                    entityType: 'business',
                     id: String(business._id),
                     name: (0, localize_1.localizeField)(business.name),
                     count: business.viewCount || 0,
@@ -310,6 +314,7 @@ const applySelectedEntity = async (query, mapFilter, placeFilter, offerFilter) =
                 mapIds: [],
                 usagePlace: business
                     ? {
+                        entityType: 'business',
                         id: String(business._id),
                         name: (0, localize_1.localizeField)(business.name),
                         count: business.viewCount || 0,
@@ -326,6 +331,7 @@ const applySelectedEntity = async (query, mapFilter, placeFilter, offerFilter) =
     return { mapIds: [] };
 };
 const getReportsData = async (query = {}) => {
+    var _a, _b, _c, _d, _e, _f;
     // 1. Parse and sanitize input filters
     const countryParam = typeof query.country === 'string' && query.country.trim() ? query.country.trim() : null;
     const countryRegex = countryParam ? new RegExp(`^${escapeRegex(countryParam)}$`, 'i') : null;
@@ -333,7 +339,6 @@ const getReportsData = async (query = {}) => {
     const categoryOid = categoryParam ? new mongoose_1.default.Types.ObjectId(categoryParam) : null;
     const dateRange = query.timeFilter ? getDateRangeQuery(query.timeFilter) : null;
     const hasEntity = isObjectId(String(query.entityId || '')) && !!query.entityType;
-    const hasFilter = Boolean(countryParam || categoryParam || hasEntity || dateRange);
     // Construct filters for Maps, Places, Businesses, Offers
     const mapFilter = {};
     const placeFilter = {};
@@ -367,7 +372,7 @@ const getReportsData = async (query = {}) => {
         ];
     }
     // Selected place / business / map / offer (applied after defaults)
-    const { mapIds: entityMapIds, usagePlace } = await applySelectedEntity(query, mapFilter, placeFilter, offerFilter);
+    const { usagePlace } = await applySelectedEntity(query, mapFilter, placeFilter, offerFilter);
     // Fetch allowed docs based on computed filters
     const allowedMapDocs = await map_model_1.Map.find(mapFilter)
         .select('_id name country places viewCount')
@@ -395,99 +400,44 @@ const getReportsData = async (query = {}) => {
     const allowedOfferDocs = await offer_model_1.Offer.find(offerFilter).select('_id').lean();
     const allowedOfferOids = allowedOfferDocs.map(o => o._id);
     // ==================== SALES & TAXES CALCULATION ====================
-    const realPaymentsCount = await payment_model_1.Payment.countDocuments({ status: 'succeeded' });
-    let payments = [];
-    if (realPaymentsCount > 0) {
-        const paymentFilter = { status: 'succeeded' };
-        if (dateRange) {
-            paymentFilter.createdAt = dateRange;
-        }
-        if (allowedMapOids.length > 0) {
-            paymentFilter.mapId = { $in: allowedMapOids };
-        }
-        else if (mapFilter._id || mapFilter.country) {
-            paymentFilter.mapId = { $in: [] };
-        }
-        payments = await payment_model_1.Payment.find(paymentFilter).lean();
+    const paymentFilter = { status: 'succeeded' };
+    if (dateRange)
+        paymentFilter.createdAt = dateRange;
+    if (allowedMapOids.length > 0) {
+        paymentFilter.mapId = { $in: allowedMapOids };
     }
-    else {
-        // Dynamic mock fallback based on actual database maps
-        const allMaps = await map_model_1.Map.find({}, 'name country createdAt').lean();
-        const mockPayments = [];
-        const now = new Date();
-        if (allMaps.length > 0) {
-            allMaps.forEach((map, index) => {
-                for (let i = 0; i < 5; i++) {
-                    const pDate = new Date(now.getFullYear(), now.getMonth() - i, 10 + ((index * 3) % 15));
-                    mockPayments.push({
-                        mapId: map._id.toString(),
-                        amount: 25 + index * 12 + i * 6,
-                        status: 'succeeded',
-                        createdAt: pDate,
-                        updatedAt: pDate,
-                    });
-                }
-            });
-        }
-        else {
-            for (let i = 0; i < 30; i++) {
-                const pDate = new Date(now.getFullYear(), now.getMonth() - (i % 6), 15);
-                mockPayments.push({
-                    amount: 60 + i * 15,
-                    status: 'succeeded',
-                    createdAt: pDate,
-                    updatedAt: pDate,
-                });
-            }
-        }
-        payments = mockPayments.filter(p => {
-            if (dateRange) {
-                const time = p.createdAt.getTime();
-                if (time < dateRange.$gte.getTime() || (dateRange.$lte && time > dateRange.$lte.getTime())) {
-                    return false;
-                }
-            }
-            if (countryRegex && p.mapId) {
-                const map = allMaps.find(m => m._id.toString() === p.mapId);
-                if (!map || !map.country || !countryRegex.test(map.country))
-                    return false;
-            }
-            if (categoryOid && p.mapId) {
-                if (!allowedMapIds.includes(p.mapId))
-                    return false;
-            }
-            if (query.entityType && query.entityId) {
-                if (!p.mapId || !entityMapIds.includes(String(p.mapId)))
-                    return false;
-            }
-            return true;
-        });
+    else if (mapFilter._id || mapFilter.country || categoryOid || hasEntity) {
+        paymentFilter.mapId = { $in: [] };
     }
+    const payments = await payment_model_1.Payment.find(paymentFilter).lean();
     let totalSales = 0;
+    let taxTotal = 0;
     payments.forEach(p => {
         totalSales += p.amount || 0;
+        taxTotal += p.taxAmount || 0;
     });
-    const taxesCollected = Math.round(totalSales * 0.1 * 100) / 100;
+    const taxesCollected = Math.round(taxTotal * 100) / 100;
     const netRevenue = Math.round((totalSales - taxesCollected) * 100) / 100;
     // Monthly sales & tax grouping
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthlyMap = {};
-    const now = new Date();
+    const now = new Date(Math.min(Date.now(), (_b = (_a = dateRange === null || dateRange === void 0 ? void 0 : dateRange.$lte) === null || _a === void 0 ? void 0 : _a.getTime()) !== null && _b !== void 0 ? _b : Date.now()));
     for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const label = monthNames[d.getMonth()];
+        const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
         monthlyMap[label] = { totalSales: 0, taxes: 0, netRevenue: 0 };
     }
     payments.forEach(p => {
         const date = new Date(p.createdAt);
-        const label = monthNames[date.getMonth()];
+        const label = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
         if (monthlyMap[label] !== undefined) {
             monthlyMap[label].totalSales += p.amount || 0;
+            monthlyMap[label].taxes += p.taxAmount || 0;
         }
     });
     const monthlyData = Object.keys(monthlyMap).map(month => {
         const data = monthlyMap[month];
-        const taxes = Math.round(data.totalSales * 0.1 * 100) / 100;
+        const taxes = Math.round(data.taxes * 100) / 100;
         const rev = Math.round((data.totalSales - taxes) * 100) / 100;
         return {
             month,
@@ -504,232 +454,72 @@ const getReportsData = async (query = {}) => {
     ]);
     const mapPlaceCountMap = new globalThis.Map(mapPlaceCounts.map(p => [String(p._id), p.count]));
     const mapDocMap = new globalThis.Map(allowedMapDocs.map(m => [String(m._id), m]));
-    let mostViewedMaps = [];
-    if (dateRange) {
-        const mapAgg = await usageView_model_1.UsageView.aggregate([
-            {
-                $match: {
-                    type: 'map',
-                    entityId: { $in: allowedMapIds },
-                    lastSeenAt: dateRange,
-                },
-            },
-            { $group: { _id: '$entityId', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 20 },
-        ]);
-        if (mapAgg.length > 0) {
-            mostViewedMaps = mapAgg.map(r => {
-                const doc = mapDocMap.get(String(r._id));
-                const spotsFromPlaces = mapPlaceCountMap.get(String(r._id)) || 0;
-                return {
-                    id: String(r._id),
-                    name: (doc === null || doc === void 0 ? void 0 : doc.name) ? (0, localize_1.localizeField)(doc.name) : 'Unknown Map',
-                    count: r.count || 0,
-                    placesCount: spotsFromPlaces,
-                    country: doc === null || doc === void 0 ? void 0 : doc.country,
-                };
-            });
-        }
-        else {
-            // Graceful fallback to allowed maps with 0 views in this date window
-            mostViewedMaps = allowedMapDocs.slice(0, 20).map(m => {
-                const spotsFromPlaces = mapPlaceCountMap.get(String(m._id)) || 0;
-                return {
-                    id: String(m._id),
-                    name: (0, localize_1.localizeField)(m.name),
-                    count: 0,
-                    placesCount: spotsFromPlaces,
-                    country: m.country,
-                };
-            });
-        }
-    }
-    else {
-        const mostViewedMapsRaw = await map_model_1.Map.find(mapFilter)
-            .sort({ viewCount: -1 })
-            .limit(20)
-            .select('name viewCount country places')
-            .lean();
-        const rawOids = mostViewedMapsRaw.map(m => m._id);
-        const rawCounts = await place_model_1.Place.aggregate([
-            { $match: { map: { $in: rawOids } } },
-            { $group: { _id: '$map', count: { $sum: 1 } } },
-        ]);
-        const rawCountMap = new globalThis.Map(rawCounts.map(p => [String(p._id), p.count]));
-        mostViewedMaps = mostViewedMapsRaw.map(m => {
-            const spotsFromPlaces = rawCountMap.get(String(m._id)) || 0;
-            return {
-                id: String(m._id),
-                name: (0, localize_1.localizeField)(m.name),
-                count: m.viewCount || 0,
-                placesCount: spotsFromPlaces,
-                country: m.country,
-            };
+    // Counts and viewer drilldowns use the same deduplicated records, not lifetime
+    // counters that also include repeat visits and unidentifiable historical opens.
+    const [mapRanks, placeRanks] = await Promise.all([
+        (0, usage_reporting_1.rankedViewers)('map', allowedMapIds, dateRange),
+        (0, usage_reporting_1.rankedViewers)('place', allowedPlaceIds, dateRange),
+    ]);
+    const rankedMapIds = new Set(mapRanks.map(r => String(r._id)));
+    const mapsWithCounts = [...mapRanks, ...allowedMapDocs.filter(m => !rankedMapIds.has(String(m._id))).map(m => ({ _id: m._id, count: 0, profileCount: 0 }))]
+        .sort((a, b) => (b.profileCount || 0) - (a.profileCount || 0) || b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20);
+    const mostViewedMaps = mapsWithCounts.map(r => {
+        const doc = mapDocMap.get(String(r._id));
+        return {
+            id: String(r._id), name: (0, localize_1.localizeField)(doc === null || doc === void 0 ? void 0 : doc.name), count: r.count,
+            placesCount: mapPlaceCountMap.get(String(r._id)) || 0, country: doc === null || doc === void 0 ? void 0 : doc.country,
+            profileCount: r.profileCount || 0,
+            countMetric: 'unique_viewers',
+            ...(!dateRange ? { totalViews: (doc === null || doc === void 0 ? void 0 : doc.viewCount) || 0 } : {}),
+        };
+    });
+    const placeDocMap = new globalThis.Map(allowedPlaceDocs.map(p => [String(p._id), p]));
+    const rankedPlaceIds = new Set(placeRanks.map(r => String(r._id)));
+    const placesWithCounts = [...placeRanks, ...allowedPlaceDocs.filter(p => !rankedPlaceIds.has(String(p._id))).map(p => ({ _id: p._id, count: 0, profileCount: 0 }))]
+        .sort((a, b) => (b.profileCount || 0) - (a.profileCount || 0) || b.count - a.count || String(a._id).localeCompare(String(b._id))).slice(0, 20);
+    let mostOpenedPlaces = placesWithCounts.map(r => {
+        var _a, _b;
+        return ({
+            id: String(r._id), name: (0, localize_1.localizeField)((_a = placeDocMap.get(String(r._id))) === null || _a === void 0 ? void 0 : _a.name),
+            profileCount: r.profileCount || 0,
+            count: r.count, countMetric: 'unique_viewers',
+            ...(!dateRange ? { totalViews: ((_b = placeDocMap.get(String(r._id))) === null || _b === void 0 ? void 0 : _b.openCount) || 0 } : {}),
         });
-    }
-    let mostOpenedPlaces = [];
-    if (dateRange) {
-        const placeAgg = await usageView_model_1.UsageView.aggregate([
-            {
-                $match: {
-                    type: 'place',
-                    entityId: { $in: allowedPlaceIds },
-                    lastSeenAt: dateRange,
-                },
-            },
-            { $group: { _id: '$entityId', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 20 },
-        ]);
-        if (placeAgg.length > 0) {
-            const placeIds = placeAgg.map(r => new mongoose_1.default.Types.ObjectId(r._id));
-            const places = await place_model_1.Place.find({ _id: { $in: placeIds } }).select('name').lean();
-            const nameMap = new globalThis.Map(places.map(p => [p._id.toString(), (0, localize_1.localizeField)(p.name)]));
-            mostOpenedPlaces = placeAgg.map(r => ({
-                id: String(r._id),
-                name: nameMap.get(String(r._id)) || 'Unknown Place',
-                count: r.count || 0,
-            }));
-        }
-        else {
-            mostOpenedPlaces = allowedPlaceDocs.slice(0, 20).map(p => ({
-                id: String(p._id),
-                name: (0, localize_1.localizeField)(p.name),
-                count: 0,
-            }));
-        }
-    }
-    else {
-        const mostOpenedPlacesRaw = await place_model_1.Place.find(placeFilter)
-            .sort({ openCount: -1 })
-            .limit(20)
-            .select('name openCount')
-            .lean();
-        mostOpenedPlaces = mostOpenedPlacesRaw.map(p => ({
-            id: String(p._id),
-            name: (0, localize_1.localizeField)(p.name),
-            count: p.openCount || 0,
-        }));
-    }
+    });
     if (usagePlace) {
+        if (usagePlace.entityType === 'business') {
+            const ranks = await (0, usage_reporting_1.rankedViewers)('business', [usagePlace.id], dateRange);
+            if (!dateRange)
+                usagePlace.totalViews = usagePlace.count;
+            usagePlace.count = ((_c = ranks[0]) === null || _c === void 0 ? void 0 : _c.count) || 0;
+            usagePlace.profileCount = ((_d = ranks[0]) === null || _d === void 0 ? void 0 : _d.profileCount) || 0;
+            usagePlace.countMetric = 'unique_viewers';
+        }
         mostOpenedPlaces = [usagePlace];
     }
-    let mostRedeemedOffers = [];
-    if (dateRange) {
-        const scopedOffers = await offer_model_1.Offer.find(offerFilter)
-            .select('_id title business place')
-            .populate('business', 'name')
-            .populate('place', 'name')
-            .lean();
-        const scopedIds = scopedOffers.map(o => o._id);
-        const redemptionMatch = { redemptionTime: dateRange };
-        if (scopedIds.length > 0) {
-            redemptionMatch.offer = { $in: scopedIds };
-        }
-        else if (Object.keys(offerFilter).length > 0) {
-            redemptionMatch.offer = { $in: [] };
-        }
-        const redemptionAgg = await offerRedemption_model_1.OfferRedemption.aggregate([
-            { $match: redemptionMatch },
-            { $group: { _id: '$offer', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 20 },
-        ]);
-        if (redemptionAgg.length > 0) {
-            const offerInfoById = new globalThis.Map(scopedOffers.map((o) => {
-                var _a, _b, _c, _d;
-                return [
-                    String(o._id),
-                    {
-                        title: (0, localize_1.localizeField)(o.title),
-                        businessName: ((_a = o.business) === null || _a === void 0 ? void 0 : _a.name)
-                            ? (0, localize_1.localizeField)(o.business.name)
-                            : ((_b = o.place) === null || _b === void 0 ? void 0 : _b.name)
-                                ? (0, localize_1.localizeField)(o.place.name)
-                                : undefined,
-                        businessId: ((_c = o.business) === null || _c === void 0 ? void 0 : _c._id) ? String(o.business._id) : undefined,
-                        placeId: ((_d = o.place) === null || _d === void 0 ? void 0 : _d._id) ? String(o.place._id) : undefined,
-                    },
-                ];
-            }));
-            const missingIds = redemptionAgg
-                .map((r) => r._id)
-                .filter((id) => !offerInfoById.has(String(id)));
-            if (missingIds.length) {
-                const extra = await offer_model_1.Offer.find({ _id: { $in: missingIds } })
-                    .select('_id title business place')
-                    .populate('business', 'name')
-                    .populate('place', 'name')
-                    .lean();
-                extra.forEach((o) => {
-                    var _a, _b, _c, _d;
-                    return offerInfoById.set(String(o._id), {
-                        title: (0, localize_1.localizeField)(o.title),
-                        businessName: ((_a = o.business) === null || _a === void 0 ? void 0 : _a.name)
-                            ? (0, localize_1.localizeField)(o.business.name)
-                            : ((_b = o.place) === null || _b === void 0 ? void 0 : _b.name)
-                                ? (0, localize_1.localizeField)(o.place.name)
-                                : undefined,
-                        businessId: ((_c = o.business) === null || _c === void 0 ? void 0 : _c._id) ? String(o.business._id) : undefined,
-                        placeId: ((_d = o.place) === null || _d === void 0 ? void 0 : _d._id) ? String(o.place._id) : undefined,
-                    });
-                });
-            }
-            mostRedeemedOffers = redemptionAgg.map((r) => {
-                const info = offerInfoById.get(String(r._id));
-                return {
-                    id: String(r._id),
-                    name: (info === null || info === void 0 ? void 0 : info.title) || 'Unknown offer',
-                    businessName: info === null || info === void 0 ? void 0 : info.businessName,
-                    businessId: info === null || info === void 0 ? void 0 : info.businessId,
-                    placeId: info === null || info === void 0 ? void 0 : info.placeId,
-                    count: r.count || 0,
-                };
-            });
-        }
-        else {
-            mostRedeemedOffers = scopedOffers.slice(0, 20).map((o) => {
-                var _a, _b, _c, _d;
-                return ({
-                    id: String(o._id),
-                    name: (0, localize_1.localizeField)(o.title),
-                    businessName: ((_a = o.business) === null || _a === void 0 ? void 0 : _a.name)
-                        ? (0, localize_1.localizeField)(o.business.name)
-                        : ((_b = o.place) === null || _b === void 0 ? void 0 : _b.name)
-                            ? (0, localize_1.localizeField)(o.place.name)
-                            : undefined,
-                    businessId: ((_c = o.business) === null || _c === void 0 ? void 0 : _c._id) ? String(o.business._id) : undefined,
-                    placeId: ((_d = o.place) === null || _d === void 0 ? void 0 : _d._id) ? String(o.place._id) : undefined,
-                    count: 0,
-                });
-            });
-        }
-    }
-    else {
-        const mostRedeemedOffersRaw = await offer_model_1.Offer.find(offerFilter)
-            .sort({ redemptionsCount: -1 })
-            .limit(20)
-            .select('title redemptionsCount business place')
-            .populate('business', 'name')
-            .populate('place', 'name')
-            .lean();
-        mostRedeemedOffers = mostRedeemedOffersRaw.map((o) => {
-            var _a, _b, _c, _d;
-            return ({
-                id: String(o._id),
-                name: (0, localize_1.localizeField)(o.title),
-                businessName: ((_a = o.business) === null || _a === void 0 ? void 0 : _a.name)
-                    ? (0, localize_1.localizeField)(o.business.name)
-                    : ((_b = o.place) === null || _b === void 0 ? void 0 : _b.name)
-                        ? (0, localize_1.localizeField)(o.place.name)
-                        : undefined,
-                businessId: ((_c = o.business) === null || _c === void 0 ? void 0 : _c._id) ? String(o.business._id) : undefined,
-                placeId: ((_d = o.place) === null || _d === void 0 ? void 0 : _d._id) ? String(o.place._id) : undefined,
-                count: o.redemptionsCount || 0,
-            });
+    // Rankings and drilldowns use redemption records, never the legacy cached counter.
+    const scopedOffers = await offer_model_1.Offer.find(offerFilter)
+        .select('_id title business place')
+        .populate('business', 'name').populate('place', 'name').lean();
+    const redemptionRanks = await offerRedemption_model_1.OfferRedemption.aggregate([
+        { $match: { offer: { $in: scopedOffers.map(o => o._id) }, ...(dateRange ? { redemptionTime: dateRange } : {}) } },
+        { $lookup: { from: user_model_1.User.collection.name, localField: 'user', foreignField: '_id',
+                pipeline: [{ $match: { status: { $ne: 'deleted' } } }, { $project: { _id: 1 } }], as: 'account' } },
+        { $group: { _id: '$offer', count: { $sum: 1 }, accountIds: { $addToSet: { $arrayElemAt: ['$account._id', 0] } } } },
+        { $project: { count: 1, profileCount: { $size: { $filter: { input: '$accountIds', as: 'id', cond: { $ne: ['$$id', null] } } } } } },
+    ]);
+    const redemptionRankMap = new globalThis.Map(redemptionRanks.map(r => [String(r._id), r]));
+    const mostRedeemedOffers = scopedOffers.map((o) => {
+        var _a, _b, _c, _d, _e, _f;
+        return ({
+            id: String(o._id), name: (0, localize_1.localizeField)(o.title),
+            businessName: ((_a = o.business) === null || _a === void 0 ? void 0 : _a.name) ? (0, localize_1.localizeField)(o.business.name) : ((_b = o.place) === null || _b === void 0 ? void 0 : _b.name) ? (0, localize_1.localizeField)(o.place.name) : undefined,
+            businessId: ((_c = o.business) === null || _c === void 0 ? void 0 : _c._id) ? String(o.business._id) : undefined,
+            placeId: ((_d = o.place) === null || _d === void 0 ? void 0 : _d._id) ? String(o.place._id) : undefined,
+            count: ((_e = redemptionRankMap.get(String(o._id))) === null || _e === void 0 ? void 0 : _e.count) || 0,
+            profileCount: ((_f = redemptionRankMap.get(String(o._id))) === null || _f === void 0 ? void 0 : _f.profileCount) || 0,
         });
-    }
+    }).sort((a, b) => (b.profileCount || 0) - (a.profileCount || 0) || b.count - a.count || a.id.localeCompare(b.id)).slice(0, 20);
     // ==================== USER ACTIVITY & ENGAGEMENT ====================
     // Build scoped filters for Visited, Review, and OfferRedemption
     const visitedFilter = {};
@@ -796,11 +586,25 @@ const getReportsData = async (query = {}) => {
         }
     }
     // Active user distinct query filters
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const activityEnd = Math.min(Date.now(), (_f = (_e = dateRange === null || dateRange === void 0 ? void 0 : dateRange.$lte) === null || _e === void 0 ? void 0 : _e.getTime()) !== null && _f !== void 0 ? _f : Date.now());
+    const activityStart = (days) => {
+        var _a, _b;
+        return new Date(Math.max(activityEnd - days * 24 * 60 * 60 * 1000, (_b = (_a = dateRange === null || dateRange === void 0 ? void 0 : dateRange.$gte) === null || _a === void 0 ? void 0 : _a.getTime()) !== null && _b !== void 0 ? _b : 0));
+    };
+    const oneDayAgo = activityStart(1);
+    const sevenDaysAgo = activityStart(7);
+    const thirtyDaysAgo = activityStart(30);
     const usageEntityMatch = {};
-    if (countryRegex || categoryOid || hasEntity) {
+    if (hasEntity) {
+        if (['map', 'place', 'business'].includes(query.entityType)) {
+            usageEntityMatch.type = query.entityType;
+            usageEntityMatch.entityId = String(query.entityId);
+        }
+        else {
+            usageEntityMatch._id = { $in: [] };
+        }
+    }
+    else if (countryRegex || categoryOid) {
         const orConditions = [];
         if (allowedMapIds.length > 0) {
             orConditions.push({ type: 'map', entityId: { $in: allowedMapIds } });
@@ -835,19 +639,15 @@ const getReportsData = async (query = {}) => {
         lastSeenAt: { $gte: threshold, ...((dateRange === null || dateRange === void 0 ? void 0 : dateRange.$lte) ? { $lte: dateRange.$lte } : {}) },
     });
     // User registered filtering
-    const userCountFilter = {};
+    const userCountFilter = { status: { $ne: 'deleted' } };
     if (countryRegex) {
         userCountFilter['address.country'] = countryRegex;
     }
-    let totalRegisteredUsers = await user_model_1.User.countDocuments(userCountFilter);
-    if (totalRegisteredUsers === 0 && countryRegex) {
-        // If no users explicitly filled their address country, count all users
-        totalRegisteredUsers = await user_model_1.User.countDocuments();
-    }
+    const totalRegisteredUsers = await user_model_1.User.countDocuments(userCountFilter);
     const [usageKeysToday, usageKeysWeek, usageKeysMonth, visitedUsersToday, visitedUsersWeek, visitedUsersMonth, reviewUsersToday, reviewUsersWeek, reviewUsersMonth, redemptionUsersToday, redemptionUsersWeek, redemptionUsersMonth, updatedUsersToday, updatedUsersWeek, updatedUsersMonth, totalPlacesVisited, totalOffersRedeemed, totalReviews, recentVisits, recentReviews, recentRedemptions, recentUsers,] = await Promise.all([
-        usageView_model_1.UsageView.distinct('viewerKey', usageTimeMatch(oneDayAgo)),
-        usageView_model_1.UsageView.distinct('viewerKey', usageTimeMatch(sevenDaysAgo)),
-        usageView_model_1.UsageView.distinct('viewerKey', usageTimeMatch(thirtyDaysAgo)),
+        (0, usage_reporting_1.distinctViewers)(usageTimeMatch(oneDayAgo)),
+        (0, usage_reporting_1.distinctViewers)(usageTimeMatch(sevenDaysAgo)),
+        (0, usage_reporting_1.distinctViewers)(usageTimeMatch(thirtyDaysAgo)),
         visited_model_1.Visited.distinct('user', visitedTimeMatch(oneDayAgo)),
         visited_model_1.Visited.distinct('user', visitedTimeMatch(sevenDaysAgo)),
         visited_model_1.Visited.distinct('user', visitedTimeMatch(thirtyDaysAgo)),
@@ -857,9 +657,9 @@ const getReportsData = async (query = {}) => {
         offerRedemption_model_1.OfferRedemption.distinct('user', redemptionTimeMatch(oneDayAgo)),
         offerRedemption_model_1.OfferRedemption.distinct('user', redemptionTimeMatch(sevenDaysAgo)),
         offerRedemption_model_1.OfferRedemption.distinct('user', redemptionTimeMatch(thirtyDaysAgo)),
-        user_model_1.User.distinct('_id', { updatedAt: { $gte: oneDayAgo }, ...userCountFilter }),
-        user_model_1.User.distinct('_id', { updatedAt: { $gte: sevenDaysAgo }, ...userCountFilter }),
-        user_model_1.User.distinct('_id', { updatedAt: { $gte: thirtyDaysAgo }, ...userCountFilter }),
+        hasEntity || categoryOid ? Promise.resolve([]) : user_model_1.User.distinct('_id', { lastActiveAt: { $gte: oneDayAgo, $lte: new Date(activityEnd) }, ...userCountFilter }),
+        hasEntity || categoryOid ? Promise.resolve([]) : user_model_1.User.distinct('_id', { lastActiveAt: { $gte: sevenDaysAgo, $lte: new Date(activityEnd) }, ...userCountFilter }),
+        hasEntity || categoryOid ? Promise.resolve([]) : user_model_1.User.distinct('_id', { lastActiveAt: { $gte: thirtyDaysAgo, $lte: new Date(activityEnd) }, ...userCountFilter }),
         visited_model_1.Visited.countDocuments(visitedFilter),
         offerRedemption_model_1.OfferRedemption.countDocuments(redemptionFilter),
         review_model_1.Review.countDocuments(reviewFilter),
@@ -885,7 +685,7 @@ const getReportsData = async (query = {}) => {
             .lean(),
         hasEntity
             ? Promise.resolve([])
-            : user_model_1.User.find(countryRegex ? { 'address.country': countryRegex } : {})
+            : user_model_1.User.find({ ...userCountFilter, ...(dateRange ? { createdAt: dateRange } : {}) })
                 .sort({ createdAt: -1 })
                 .limit(8)
                 .select('name email profile createdAt role')
@@ -909,7 +709,17 @@ const getReportsData = async (query = {}) => {
     reviewUsersMonth.forEach((u) => activeMonthSet.add(`user:${String(u)}`));
     redemptionUsersMonth.forEach((u) => activeMonthSet.add(`user:${String(u)}`));
     updatedUsersMonth.forEach((u) => activeMonthSet.add(`user:${String(u)}`));
-    const recentActivities = [];
+    const viewedPlaceScope = hasEntity && query.entityType === 'map'
+        ? { type: 'place', entityId: { $in: allowedPlaceIds } }
+        : hasEntity && query.entityType === 'offer'
+            ? { $or: [
+                    { type: 'place', entityId: { $in: allowedPlaceIds } },
+                    { type: 'business', entityId: (usagePlace === null || usagePlace === void 0 ? void 0 : usagePlace.id) || '' },
+                ] }
+            : usageEntityMatch;
+    const recentActivities = await (0, recent_place_views_1.recentPlaceViews)({
+        ...viewedPlaceScope, ...(dateRange ? { lastSeenAt: dateRange } : {}),
+    });
     recentVisits.forEach((v) => {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         recentActivities.push({
@@ -980,49 +790,37 @@ const getReportsData = async (query = {}) => {
         });
     });
     recentActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    let finalActiveToday = activeTodaySet.size;
-    let finalActiveWeek = activeWeekSet.size;
-    let finalActiveMonth = activeMonthSet.size;
-    // Fallback estimation for development environment if no live usage yet and no filters applied
-    if (!hasFilter && finalActiveMonth === 0 && totalRegisteredUsers > 0) {
-        finalActiveMonth = Math.min(totalRegisteredUsers, Math.max(1, Math.round(totalRegisteredUsers * 0.75)));
-        finalActiveWeek = Math.min(finalActiveMonth, Math.max(1, Math.round(finalActiveMonth * 0.6)));
-        finalActiveToday = Math.min(finalActiveWeek, Math.max(1, Math.round(finalActiveWeek * 0.4)));
-    }
     // Query active users to enable profile inspection on statistics page
     const todayUserIds = new Set();
+    usageKeysToday.forEach((key) => {
+        const id = String(key).startsWith('user:') ? String(key).slice(5) : '';
+        if (mongoose_1.default.Types.ObjectId.isValid(id))
+            todayUserIds.add(id);
+    });
     visitedUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
     reviewUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
     redemptionUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
     updatedUsersToday.forEach((u) => u && todayUserIds.add(String(u)));
     const weekUserIds = new Set();
+    usageKeysWeek.forEach((key) => {
+        const id = String(key).startsWith('user:') ? String(key).slice(5) : '';
+        if (mongoose_1.default.Types.ObjectId.isValid(id))
+            weekUserIds.add(id);
+    });
     visitedUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
     reviewUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
     redemptionUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
     updatedUsersWeek.forEach((u) => u && weekUserIds.add(String(u)));
     const monthUserIds = new Set();
+    usageKeysMonth.forEach((key) => {
+        const id = String(key).startsWith('user:') ? String(key).slice(5) : '';
+        if (mongoose_1.default.Types.ObjectId.isValid(id))
+            monthUserIds.add(id);
+    });
     visitedUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
     reviewUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
     redemptionUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
     updatedUsersMonth.forEach((u) => u && monthUserIds.add(String(u)));
-    recentActivities.forEach((act) => {
-        if (!act.userId)
-            return;
-        const idStr = String(act.userId);
-        const actTime = new Date(act.timestamp).getTime();
-        if (actTime >= oneDayAgo.getTime()) {
-            todayUserIds.add(idStr);
-            weekUserIds.add(idStr);
-            monthUserIds.add(idStr);
-        }
-        else if (actTime >= sevenDaysAgo.getTime()) {
-            weekUserIds.add(idStr);
-            monthUserIds.add(idStr);
-        }
-        else if (actTime >= thirtyDaysAgo.getTime()) {
-            monthUserIds.add(idStr);
-        }
-    });
     // Inherit subsets: today is part of week, week is part of month
     todayUserIds.forEach((id) => {
         weekUserIds.add(id);
@@ -1041,38 +839,10 @@ const getReportsData = async (query = {}) => {
         .map((id) => new mongoose_1.default.Types.ObjectId(id));
     let activeUsersDocs = [];
     if (validObjectIds.length > 0) {
-        activeUsersDocs = await user_model_1.User.find({ _id: { $in: validObjectIds } })
-            .select('name email profile role level points updatedAt createdAt')
-            .sort({ updatedAt: -1 })
-            .limit(100)
+        activeUsersDocs = await user_model_1.User.find({ _id: { $in: validObjectIds }, status: { $ne: 'deleted' } })
+            .select('name email profile role level points lastActiveAt updatedAt createdAt')
+            .sort({ lastActiveAt: -1, updatedAt: -1 })
             .lean();
-    }
-    // Also query general registered users for "all" tab
-    const allUsersDocs = await user_model_1.User.find(countryRegex ? { 'address.country': countryRegex } : {})
-        .select('name email profile role level points updatedAt createdAt')
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .limit(100)
-        .lean();
-    if (activeUsersDocs.length === 0 && allUsersDocs.length > 0) {
-        const todayCount = Math.max(1, Math.min(allUsersDocs.length, finalActiveToday));
-        const weekCount = Math.max(todayCount, Math.min(allUsersDocs.length, finalActiveWeek));
-        const monthCount = Math.max(weekCount, Math.min(allUsersDocs.length, finalActiveMonth));
-        allUsersDocs.slice(0, todayCount).forEach((u) => {
-            const id = String(u._id);
-            todayUserIds.add(id);
-            weekUserIds.add(id);
-            monthUserIds.add(id);
-        });
-        allUsersDocs.slice(0, weekCount).forEach((u) => {
-            const id = String(u._id);
-            weekUserIds.add(id);
-            monthUserIds.add(id);
-        });
-        allUsersDocs.slice(0, monthCount).forEach((u) => {
-            const id = String(u._id);
-            monthUserIds.add(id);
-        });
-        activeUsersDocs = allUsersDocs.slice(0, monthCount);
     }
     const formatUserSummary = (u) => {
         const id = String(u._id);
@@ -1094,7 +864,7 @@ const getReportsData = async (query = {}) => {
             role: u.role || 'user',
             level: u.level || 0,
             points: u.points || 0,
-            lastActive: u.updatedAt || u.createdAt || new Date(),
+            lastActive: u.lastActiveAt || u.updatedAt || u.createdAt || new Date(),
             isActiveToday: isToday,
             isActiveWeek: isWeek,
             isActiveMonth: isMonth,
@@ -1105,11 +875,13 @@ const getReportsData = async (query = {}) => {
     const activeTodayList = activeUsersList.filter((u) => u.isActiveToday);
     const activeWeekList = activeUsersList.filter((u) => u.isActiveWeek);
     const activeMonthList = activeUsersList.filter((u) => u.isActiveMonth);
-    const allUsersList = allUsersDocs.map(formatUserSummary);
     const userActivity = {
-        activeUsersToday: finalActiveToday,
-        activeUsersThisWeek: Math.max(finalActiveToday, finalActiveWeek),
-        activeUsersThisMonth: Math.max(finalActiveWeek, finalActiveMonth),
+        activeUsersToday: activeTodayList.length,
+        guestVisitorsToday: [...activeTodaySet].filter(key => !key.startsWith('user:')).length,
+        guestVisitorsThisWeek: [...activeWeekSet].filter(key => !key.startsWith('user:')).length,
+        guestVisitorsThisMonth: [...activeMonthSet].filter(key => !key.startsWith('user:')).length,
+        activeUsersThisWeek: activeWeekList.length,
+        activeUsersThisMonth: activeMonthList.length,
         totalRegisteredUsers,
         totalPlacesVisited,
         totalOffersRedeemed,
@@ -1119,7 +891,6 @@ const getReportsData = async (query = {}) => {
         activeTodayList,
         activeWeekList,
         activeMonthList,
-        allUsersList,
     };
     return {
         salesAndTaxes: {
@@ -1136,8 +907,116 @@ const getReportsData = async (query = {}) => {
         userActivity,
     };
 };
+const getEntityUsers = async (type, id, timeFilter) => {
+    if (!mongoose_1.default.isValidObjectId(id) || !['place', 'business', 'map', 'offer'].includes(type)) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.BAD_REQUEST, 'Invalid report entity');
+    }
+    const dateRange = timeFilter ? getDateRangeQuery(timeFilter) : null;
+    const normType = String(type || '').trim().toLowerCase();
+    if (normType === 'place' || normType === 'business' || normType === 'map') {
+        const viewList = await (0, usage_reporting_1.entityViewers)(normType, id, dateRange);
+        const authViewerIds = viewList
+            .filter((v) => v.viewerKey && v.viewerKey.startsWith('user:'))
+            .map((v) => v.viewerKey.replace('user:', ''))
+            .filter((viewerId) => mongoose_1.default.isValidObjectId(viewerId));
+        const guestCount = viewList.filter((v) => !v.viewerKey || !v.viewerKey.startsWith('user:')).length;
+        const userMap = new globalThis.Map();
+        if (authViewerIds.length > 0) {
+            const viewerUsers = await user_model_1.User.find({ _id: { $in: authViewerIds }, status: { $ne: 'deleted' } })
+                .select('name email profile role level points')
+                .lean();
+            const viewerUserMap = new globalThis.Map(viewerUsers.map(u => [String(u._id), u]));
+            viewList.forEach((v) => {
+                if (v.viewerKey && v.viewerKey.startsWith('user:')) {
+                    const uId = v.viewerKey.replace('user:', '');
+                    if (!userMap.has(uId) && viewerUserMap.has(uId)) {
+                        const u = viewerUserMap.get(uId);
+                        userMap.set(uId, {
+                            _id: uId,
+                            name: u.name || 'Anonymous User',
+                            email: u.email,
+                            profile: u.profile,
+                            role: u.role,
+                            level: u.level || 1,
+                            points: u.points || 0,
+                            date: v.lastSeenAt || v.updatedAt,
+                            action: 'Viewed',
+                        });
+                    }
+                }
+            });
+        }
+        const users = Array.from(userMap.values());
+        return {
+            users,
+            totalCount: viewList.length,
+            profileCount: users.length,
+            countMetric: 'unique_viewers',
+            unavailableCount: new Set(viewList.filter((v) => { var _a; return (_a = v.viewerKey) === null || _a === void 0 ? void 0 : _a.startsWith('user:'); }).map((v) => v.viewerKey)).size - users.length,
+            guestCount,
+        };
+    }
+    if (normType === 'offer') {
+        const redemptions = await offerRedemption_model_1.OfferRedemption.find({ offer: id, ...(dateRange ? { redemptionTime: dateRange } : {}) })
+            .populate({ path: 'user', select: 'name email profile role level points', match: { status: { $ne: 'deleted' } } })
+            .sort({ redemptionTime: -1, createdAt: -1 })
+            .lean();
+        const users = redemptions
+            .filter((r) => r.user && r.user._id)
+            .map((r) => ({
+            _id: String(r.user._id),
+            name: r.user.name || 'Anonymous User',
+            email: r.user.email,
+            profile: r.user.profile,
+            role: r.user.role,
+            level: r.user.level || 1,
+            points: r.user.points || 0,
+            date: r.redemptionTime || r.createdAt,
+            action: 'Redeemed',
+        }));
+        // Redemptions are newest first; retain each person's latest redemption.
+        const uniqueUsers = new globalThis.Map();
+        users.forEach(user => {
+            if (!uniqueUsers.has(user._id))
+                uniqueUsers.set(user._id, { ...user, redemptionCount: 0 });
+            const summary = uniqueUsers.get(user._id);
+            summary.redemptionCount += 1;
+        });
+        return {
+            users: Array.from(uniqueUsers.values()),
+            totalCount: redemptions.length,
+            profileCount: uniqueUsers.size,
+            unavailableRedemptions: redemptions.filter((r) => !r.user).length,
+            countMetric: 'redemptions',
+            guestCount: 0,
+        };
+    }
+    return { users: [], totalCount: 0, guestCount: 0 };
+};
+// Separate paginated query keeps the report response bounded without hiding accounts.
+const getRegisteredUsers = async (query) => {
+    const page = Math.max(1, Math.min(1000000, Math.floor(Number(query.page) || 1)));
+    const limit = 25;
+    const filter = { status: { $ne: 'deleted' } };
+    if (typeof query.country === 'string' && query.country.trim()) {
+        filter['address.country'] = new RegExp(`^${escapeRegex(query.country.trim())}$`, 'i');
+    }
+    if (typeof query.search === 'string' && query.search.trim()) {
+        const search = new RegExp(escapeRegex(query.search.trim().slice(0, 200)), 'i');
+        filter.$or = [{ name: search }, { email: search }, { role: search }];
+    }
+    const [total, users] = await Promise.all([
+        user_model_1.User.countDocuments(filter),
+        user_model_1.User.find(filter).select('name email profile role level points lastActiveAt createdAt')
+            .sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    ]);
+    return { users: users.map(u => ({ ...u, name: u.name || 'Explorer', email: u.email || '', lastActive: u.lastActiveAt || u.createdAt })),
+        page, limit, total, totalPages: Math.ceil(total / limit) };
+};
 exports.StatsService = {
+    getRegisteredUsers,
     getDashboardData,
     getReportsData,
     searchReportEntities,
+    getEntityUsers,
 };

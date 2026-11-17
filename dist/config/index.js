@@ -2,6 +2,7 @@
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
@@ -10,11 +11,14 @@ exports.default = {
     ip_address: process.env.IP_ADDRESS,
     database_url: process.env.DATABASE_URL,
     node_env: process.env.NODE_ENV,
-    clientUrl: process.env.clientUrl,
+    clientUrl: (((_a = process.env.clientUrl) === null || _a === void 0 ? void 0 : _a.trim()) || 'https://roadtripeado.com')
+        .replace(/^https?:\/\/(www\.)?roadtripeado\.shop(?=\/|$)/i, 'https://roadtripeado.com')
+        .replace(/\/+$/, ''),
     port: process.env.PORT,
-    cors_origins: process.env.CORS_ORIGINS
-        ? process.env.CORS_ORIGINS.split(',')
-        : ['https://roadtripeado.shop', 'http://10.10.26.208:3000', 'http://localhost:3000', 'http://10.10.26.173:3000', 'http://10.10.26.172:3000', 'http://195.35.6.13:3008', 'http://localhost:3001', 'https://mohosin5004.binarybards.online'],
+    cors_origins: Array.from(new Set(['https://roadtripeado.com', ...(process.env.CORS_ORIGINS
+            ? process.env.CORS_ORIGINS.split(',')
+            : ['https://roadtripeado.shop', 'https://roadtripeado.com', 'http://localhost:3000'])]
+        .map(origin => origin.trim().replace(/\/+$/, '')).filter(Boolean))),
     bcrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
     server_map_api_key: process.env.SERVER_MAP_API_KEY,
     google: {
@@ -67,6 +71,8 @@ exports.default = {
         password: process.env.SUPER_ADMIN_PASSWORD,
     },
     stripe: {
+        automaticTaxEnabled: process.env.STRIPE_TAX_ENABLED === 'true',
+        taxCode: ((_b = process.env.STRIPE_TAX_CODE) === null || _b === void 0 ? void 0 : _b.trim()) || undefined,
         stripeSecretKey: process.env.STRIPE_API_SECRET,
         webhookSecret: process.env.WEBHOOK_SECRET,
         paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET,

@@ -509,7 +509,6 @@ class WebhookService {
                 console.error('No userId in checkout session metadata');
                 return;
             }
-            console.log('session', session);
             // Update subscription and user if it's already created
             if (session.subscription) {
                 const stripeSubscription = await stripe_service_1.stripeService.getSubscription(session.subscription);

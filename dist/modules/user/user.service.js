@@ -21,6 +21,7 @@ const offerRedemption_model_1 = require("../offer/offerRedemption.model");
 const award_model_1 = require("../award/award.model");
 require("../award/awardConfig.model");
 const levelConfig_service_1 = require("../award/levelConfig.service");
+const recent_place_views_1 = require("../stats/recent-place-views");
 const visited_model_1 = require("../visited/visited.model");
 const map_model_1 = require("../map/map.model");
 const place_model_1 = require("../place/place.model");
@@ -28,7 +29,6 @@ require("../business/business.model");
 require("../offer/offer.model");
 const localize_1 = require("../../helpers/localize");
 const updateProfile = async (user, payload) => {
-    console.log({ payload });
     const isUserExist = await user_model_1.User.findOne({
         _id: user.authId,
         status: { $nin: [user_1.USER_STATUS.DELETED] },
@@ -242,10 +242,10 @@ const getUserById = async (userId) => {
     })
         .sort({ createdAt: -1 })
         .lean();
-    // Fetch unlocked and in-progress awards/badges
-    const awards = await award_model_1.Award.find({ userId })
+    // The admin prize list contains earned rewards, ordered by milestone.
+    const awards = await award_model_1.Award.find({ userId, isUnlocked: true })
         .populate('configId')
-        .sort({ createdAt: -1 })
+        .sort({ target: 1, createdAt: 1, _id: 1 })
         .lean();
     // Fetch user's submitted reviews
     const reviews = await review_model_1.Review.find({ reviewer: userId })
@@ -259,8 +259,10 @@ const getUserById = async (userId) => {
         .populate('business', 'name location')
         .sort({ visitedAt: -1 })
         .lean();
+    const viewedPlaces = await (0, recent_place_views_1.recentPlaceViews)({ viewerKey: `user:${userId}` }, 50);
     // Compute last activity and activity summary
     const activityTimestamps = [
+        ...viewedPlaces.map(v => new Date(v.timestamp).getTime()),
         user.updatedAt ? new Date(user.updatedAt).getTime() : 0,
         user.createdAt ? new Date(user.createdAt).getTime() : 0,
         ...visitedPlaces.map((v) => (v.visitedAt ? new Date(v.visitedAt).getTime() : 0)),
@@ -271,8 +273,10 @@ const getUserById = async (userId) => {
         ? new Date(Math.max(...activityTimestamps))
         : user.updatedAt || user.createdAt;
     // Build unified chronological activity timeline
-    const activityTimeline = [];
-    visitedPlaces.slice(0, 20).forEach((v) => {
+    const activityTimeline = viewedPlaces.map(v => ({
+        ...v, type: 'place_view', name: v.subtitle,
+    }));
+    visitedPlaces.forEach((v) => {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         activityTimeline.push({
             type: 'place_visit',
@@ -289,7 +293,7 @@ const getUserById = async (userId) => {
             timestamp: v.visitedAt || v.createdAt,
         });
     });
-    reviews.slice(0, 15).forEach((r) => {
+    reviews.forEach((r) => {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         activityTimeline.push({
             type: 'review_submitted',
@@ -306,7 +310,7 @@ const getUserById = async (userId) => {
             timestamp: r.createdAt,
         });
     });
-    offerRedemptions.slice(0, 15).forEach((o) => {
+    offerRedemptions.forEach((o) => {
         var _a, _b, _c, _d, _e, _f;
         activityTimeline.push({
             type: 'offer_claimed',
@@ -360,8 +364,8 @@ const getPublicProfile = async (userId, requester) => {
     const requesterId = (requester === null || requester === void 0 ? void 0 : requester.authId) || (requester === null || requester === void 0 ? void 0 : requester._id);
     const isOwner = Boolean(requesterId && String(requesterId) === String(userId));
     const isStaff = Boolean(requester &&
-        [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(requester.role));
-    if (((_a = user.settings) === null || _a === void 0 ? void 0 : _a.profileStatus) === 'private' && !isOwner && !isStaff) {
+        [user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN].includes(requester.role));
+    if (['private', 'anonymous'].includes(((_a = user.settings) === null || _a === void 0 ? void 0 : _a.profileStatus) || '') && !isOwner && !isStaff) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This profile is private.');
     }
     // Fetch user's approved reviews with place/business names

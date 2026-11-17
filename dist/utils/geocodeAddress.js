@@ -27,7 +27,6 @@ const geocodeAddress = async (location) => {
                 formattedAddress: result.formatted_address,
             };
         }
-        console.log('No coordinates found for:', location);
         return null;
     }
     catch (error) {

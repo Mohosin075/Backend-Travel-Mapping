@@ -21,6 +21,14 @@ const BusinessSchema = new mongoose_1.Schema({
         type: mongoose_1.Schema.Types.Mixed,
         required: true,
     },
+    access: { type: mongoose_1.Schema.Types.Mixed },
+    accessibility: {
+        features: { type: [String], default: [] },
+        notes: { type: mongoose_1.Schema.Types.Mixed },
+    },
+    recommendations: { tips: { type: mongoose_1.Schema.Types.Mixed } },
+    services: { type: [String], default: [] },
+    atmosphere: { type: mongoose_1.Schema.Types.Mixed },
     contact: {
         phone: { type: String, required: true },
         website: { type: String },

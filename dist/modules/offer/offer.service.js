@@ -14,6 +14,7 @@ const QueryBuilder_1 = __importDefault(require("../../builder/QueryBuilder"));
 const offer_1 = require("../../enum/offer");
 const business_model_1 = require("../business/business.model");
 const place_model_1 = require("../place/place.model");
+const map_model_1 = require("../map/map.model");
 const autoTranslate_1 = require("../../utils/autoTranslate");
 const mapAccessHelper_1 = require("../../helpers/mapAccessHelper");
 const user_1 = require("../../enum/user");
@@ -109,39 +110,101 @@ const createOffer = async (payload, authHeader) => {
     }
     return result;
 };
-const getAllOffers = async (query, authHeader) => {
+const getAllOffers = async (query, authHeader, managed = false) => {
+    const user = await (0, mapAccessHelper_1.getUserFromToken)(authHeader);
+    if (managed && (!user || ![user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role))) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'You do not have permission to manage offers.');
+    }
+    const accessibleMapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
     const queryObj = { ...query };
+    // Imports can give several offers the same timestamp. Keep pages stable.
+    if (!queryObj.sort)
+        queryObj.sort = '-createdAt -_id';
     // Extract custom query filters before QueryBuilder.filter() runs
     const country = typeof queryObj.country === 'string' ? queryObj.country.trim() : '';
     const searchTerm = typeof queryObj.searchTerm === 'string' ? queryObj.searchTerm.trim() : '';
     delete queryObj.country;
+    const map = typeof queryObj.map === 'string' ? queryObj.map.trim() : '';
+    delete queryObj.map;
     delete queryObj.searchTerm;
-    // Find all approved businesses with active subscriptions
-    const activeBusinesses = await business_model_1.Business.find({
-        status: 'Approved',
-        hasActiveSubscription: true,
-    }).select('_id').lean();
-    const activeBusinessIds = activeBusinesses.map(b => b._id);
-    // Filter offers: must either belong to a place or to an active/approved business
-    const filterConditions = [
-        {
+    const filterConditions = [];
+    if (!managed) {
+        // Publication rules apply to discovery, not to the staff management list.
+        const activeBusinesses = await business_model_1.Business.find({
+            status: 'Approved', hasActiveSubscription: true,
+        }).select('_id').lean();
+        filterConditions.push({
             $or: [
                 { place: { $exists: true, $ne: null } },
-                { business: { $in: activeBusinessIds } },
+                { business: { $in: activeBusinesses.map(b => b._id) } },
             ],
-        },
-    ];
-    // Filter by country if provided
-    if (country) {
-        const countryRegex = new RegExp(`^${escapeRegex(country)}$`, 'i');
+        });
+    }
+    else if ((user === null || user === void 0 ? void 0 : user.role) === user_1.USER_ROLES.MAP_EDITOR) {
+        // Scope before pagination so another editor's offers cannot consume a page.
+        const assignedMaps = await map_model_1.Map.find({ _id: { $in: accessibleMapIds } }).select('name country').lean();
+        const countries = Array.from(new Set([
+            ...(user.assignedCountries || []),
+            ...assignedMaps.flatMap(m => { var _a, _b; return [m.country, ...(typeof m.name === 'string' ? [m.name] : [(_a = m.name) === null || _a === void 0 ? void 0 : _a.en, (_b = m.name) === null || _b === void 0 ? void 0 : _b.es])]; }),
+        ].filter((value) => typeof value === 'string' && !!value.trim())));
+        const countryRegexes = countries.map(value => new RegExp('^' + escapeRegex(value.trim()) + '$', 'i'));
+        const [places, businesses] = await Promise.all([
+            place_model_1.Place.find({ map: { $in: accessibleMapIds } }).select('_id').lean(),
+            business_model_1.Business.find({ 'location.country': { $in: countryRegexes } }).select('_id').lean(),
+        ]);
+        filterConditions.push({ $or: [
+                { place: { $in: places.map(p => p._id) } },
+                { business: { $in: businesses.map(b => b._id) } },
+            ] });
+    }
+    // Filter by country or map if provided
+    if (country || map) {
+        const mapOrConditions = [];
+        if (map && mongoose_1.Types.ObjectId.isValid(map)) {
+            mapOrConditions.push({ _id: new mongoose_1.Types.ObjectId(map) });
+        }
+        if (country && !map) {
+            if (mongoose_1.Types.ObjectId.isValid(country)) {
+                mapOrConditions.push({ _id: new mongoose_1.Types.ObjectId(country) });
+            }
+            const cRegex = new RegExp('^' + escapeRegex(country) + '$', 'i');
+            mapOrConditions.push({ country: cRegex }, { 'name.en': cRegex }, { 'name.es': cRegex }, { name: cRegex });
+        }
+        const matchingMaps = mapOrConditions.length > 0
+            ? await map_model_1.Map.find({ $or: mapOrConditions }).select('_id name country').lean()
+            : [];
+        const mapIds = matchingMaps.map((m) => m._id);
+        const mapCountries = matchingMaps.map((m) => m.country).filter(Boolean);
+        const mapNames = matchingMaps
+            .flatMap((m) => { var _a, _b; return typeof m.name === 'string' ? [m.name] : [(_a = m.name) === null || _a === void 0 ? void 0 : _a.es, (_b = m.name) === null || _b === void 0 ? void 0 : _b.en]; })
+            .filter(Boolean);
+        const allCountryStrings = Array.from(new Set([
+            ...(country && !map ? [country] : []),
+            ...mapCountries,
+            ...mapNames,
+        ]));
+        const countryRegexes = allCountryStrings.map(c => new RegExp('^' + escapeRegex(c) + '$', 'i'));
+        const placeOr = [];
+        if (countryRegexes.length > 0) {
+            placeOr.push({ country: { $in: countryRegexes } });
+        }
+        if (mapIds.length > 0) {
+            placeOr.push({ map: { $in: mapIds } });
+        }
+        const businessOr = [];
+        if (countryRegexes.length > 0) {
+            businessOr.push({ 'location.country': { $in: countryRegexes } }, { country: { $in: countryRegexes } });
+        }
+        if (mapIds.length > 0) {
+            businessOr.push({ map: { $in: mapIds } });
+        }
         const [matchingPlaces, matchingBusinesses] = await Promise.all([
-            place_model_1.Place.find({ country: countryRegex }).select('_id').lean(),
-            business_model_1.Business.find({
-                $or: [
-                    { 'location.country': countryRegex },
-                    { country: countryRegex },
-                ],
-            }).select('_id').lean(),
+            placeOr.length > 0
+                ? place_model_1.Place.find({ $or: placeOr }).select('_id').lean()
+                : Promise.resolve([]),
+            businessOr.length > 0
+                ? business_model_1.Business.find({ $or: businessOr }).select('_id').lean()
+                : Promise.resolve([]),
         ]);
         const placeIds = matchingPlaces.map(p => p._id);
         const businessIds = matchingBusinesses.map(b => b._id);
@@ -159,6 +222,8 @@ const getAllOffers = async (query, authHeader) => {
             place_model_1.Place.find({
                 $or: [
                     { name: searchRegex },
+                    { 'name.en': searchRegex },
+                    { 'name.es': searchRegex },
                     { address: searchRegex },
                     { country: searchRegex },
                 ],
@@ -166,6 +231,8 @@ const getAllOffers = async (query, authHeader) => {
             business_model_1.Business.find({
                 $or: [
                     { name: searchRegex },
+                    { 'name.en': searchRegex },
+                    { 'name.es': searchRegex },
                     { 'location.address': searchRegex },
                     { 'location.city': searchRegex },
                     { 'location.country': searchRegex },
@@ -176,7 +243,11 @@ const getAllOffers = async (query, authHeader) => {
         const businessIds = matchingBusinesses.map(b => b._id);
         const searchOr = [
             { title: searchRegex },
+            { 'title.en': searchRegex },
+            { 'title.es': searchRegex },
             { description: searchRegex },
+            { 'description.en': searchRegex },
+            { 'description.es': searchRegex },
         ];
         if (placeIds.length > 0) {
             searchOr.push({ place: { $in: placeIds } });
@@ -188,23 +259,28 @@ const getAllOffers = async (query, authHeader) => {
     }
     const finalFilter = filterConditions.length > 1
         ? { $and: filterConditions }
-        : filterConditions[0];
+        : filterConditions[0] || {};
     const offerQuery = new QueryBuilder_1.default(offer_model_1.Offer.find(finalFilter)
-        .populate('business', 'name location media status category map country')
-        .populate('place', 'name location media status category map country address')
+        .populate({
+        path: 'business',
+        select: 'name location media status category map country',
+    })
+        .populate({
+        path: 'place',
+        select: 'name location media status category map country address',
+        populate: { path: 'map', select: 'name country' },
+    })
         .lean(), queryObj)
         .filter()
         .sort()
         .paginate()
         .fields();
-    // Concurrently run query, pagination, and user authentication
-    const [user, rawData, meta] = await Promise.all([
-        (0, mapAccessHelper_1.getUserFromToken)(authHeader),
+    // Fetch the rows and their total using the same scoped filter.
+    const [rawData, meta] = await Promise.all([
         offerQuery.modelQuery,
         offerQuery.getPaginationInfo(),
     ]);
     const isPremium = user && ([user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role));
-    const accessibleMapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
     const countries = rawData
         .map((offer) => { var _a, _b, _c; return ((_b = (_a = offer.business) === null || _a === void 0 ? void 0 : _a.location) === null || _b === void 0 ? void 0 : _b.country) || ((_c = offer.business) === null || _c === void 0 ? void 0 : _c.country); })
         .filter(Boolean);
@@ -253,8 +329,15 @@ const getOfferById = async (id, authHeader) => {
     const [user, rawResult] = await Promise.all([
         (0, mapAccessHelper_1.getUserFromToken)(authHeader),
         offer_model_1.Offer.findById(id)
-            .populate('place', 'name location media status category map country address')
-            .populate('business', 'name location media status category'),
+            .populate({
+            path: 'place',
+            select: 'name location media status category map country address',
+            populate: { path: 'map', select: 'name country' },
+        })
+            .populate({
+            path: 'business',
+            select: 'name location media status category map country',
+        }),
     ]);
     if (!rawResult) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Offer not found');
@@ -634,6 +717,7 @@ const redeemOffer = async (id, userId, authHeader) => {
 exports.OfferService = {
     createOffer,
     getAllOffers,
+    getManagedOffers: (query, authHeader) => getAllOffers(query, authHeader, true),
     getOfferById,
     updateOffer,
     deleteOffer,

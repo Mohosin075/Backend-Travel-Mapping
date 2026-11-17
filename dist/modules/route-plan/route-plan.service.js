@@ -12,6 +12,8 @@ const place_model_1 = require("../place/place.model");
 const business_model_1 = require("../business/business.model");
 const user_model_1 = require("../user/user.model");
 const map_model_1 = require("../map/map.model");
+const countryScope_1 = require("../../helpers/countryScope");
+const mapAccessHelper_1 = require("../../helpers/mapAccessHelper");
 /**
  * Normalizes stops before saving:
  * - Checks whether ID belongs to Place or Business
@@ -24,9 +26,11 @@ const normalizeStops = async (rawStops, userId) => {
         return [];
     let userRole;
     let purchasedMaps = [];
+    let currentUser;
     if (userId && mongoose_1.default.Types.ObjectId.isValid(userId)) {
-        const userDoc = await user_model_1.User.findById(userId).select('role purchasedMaps');
+        const userDoc = await user_model_1.User.findById(userId).select('role purchasedMaps assignedMaps assignedCountries');
         if (userDoc) {
+            currentUser = userDoc;
             userRole = userDoc.role;
             purchasedMaps = (userDoc.purchasedMaps || []).map((m) => m.toString());
         }
@@ -47,6 +51,12 @@ const normalizeStops = async (rawStops, userId) => {
         if (placeDoc) {
             placeId = placeDoc._id;
             type = placeDoc.type === 'Business' ? 'Business' : 'Place';
+            if (type === 'Place' && userRole === 'map_editor') {
+                if (!placeDoc.map) {
+                    throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'This place is not on an assigned map.');
+                }
+                await (0, mapAccessHelper_1.verifyEditorEditAccess)(currentUser, String(placeDoc.map));
+            }
             // Restrict tourist attractions: non-business places require purchased or free map
             if (type === 'Place' && !isAdminOrEditor) {
                 if (placeDoc.map) {
@@ -131,6 +141,18 @@ const getMyRoutePlans = async (userId, query) => {
     const filter = {
         user: new mongoose_1.default.Types.ObjectId(userId),
     };
+    if (typeof query.country === 'string' && query.country.trim()) {
+        const { countries, mapIds } = await (0, countryScope_1.getCountryScope)(query.country);
+        const [places, businesses] = await Promise.all([
+            place_model_1.Place.find({ $or: [{ country: { $in: countries } }, { map: { $in: mapIds } }] }).select('_id').lean(),
+            business_model_1.Business.find({ 'location.country': { $in: countries } }).select('_id').lean(),
+        ]);
+        // A route crossing countries appears for each country containing one of its stops.
+        filter.$or = [
+            { 'stops.place': { $in: places.map(place => place._id) } },
+            { 'stops.business': { $in: businesses.map(business => business._id) } },
+        ];
+    }
     if (searchTerm && typeof searchTerm === 'string') {
         filter.name = { $regex: searchTerm.trim(), $options: 'i' };
     }

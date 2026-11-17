@@ -87,7 +87,7 @@ app.use('/documents', express_1.default.static(path_1.default.join(process.cwd()
 app.get('/', (req, res) => {
     res.status(http_status_codes_1.StatusCodes.OK).json({
         success: true,
-        message: 'Welcome to the API! The server is running smoothly.',
+        message: 'Welcome to the roadtripeado API! The server is running smoothly.',
         timestamp: new Date().toISOString(),
     });
 });

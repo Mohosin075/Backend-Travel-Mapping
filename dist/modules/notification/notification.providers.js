@@ -62,8 +62,6 @@ class EmailProvider {
                 throw new ApiError_1.default(http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR, `Failed to send email: ${error.message}`);
             }
             console.log(`📧 Email sent via Resend: ${result === null || result === void 0 ? void 0 : result.id}`);
-            console.log(`   To: ${recipients.join(', ')}`);
-            console.log(`   Subject: ${subject}`);
             return true;
         }
         catch (error) {

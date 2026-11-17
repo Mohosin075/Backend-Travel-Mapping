@@ -11,6 +11,9 @@ const UsageViewSchema = new mongoose_1.Schema({
     },
     entityId: { type: String, required: true },
     lastSeenAt: { type: Date, required: true, default: Date.now },
+    lastCountedAt: { type: Date },
 }, { timestamps: true });
 UsageViewSchema.index({ viewerKey: 1, type: 1, entityId: 1 }, { unique: true });
+UsageViewSchema.index({ type: 1, entityId: 1, lastSeenAt: -1 });
+UsageViewSchema.index({ lastSeenAt: -1 }); // Global activity ranges
 exports.UsageView = (0, mongoose_1.model)('UsageView', UsageViewSchema);

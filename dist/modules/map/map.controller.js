@@ -23,14 +23,41 @@ const createMap = (0, catchAsync_1.default)(async (req, res) => {
         data: (0, localize_1.localizeDocument)(result, req.lang, mapFields),
     });
 });
+const getManagedMaps = (0, catchAsync_1.default)(async (req, res) => {
+    const user = await (0, mapAccessHelper_1.getUserFromToken)(req.headers.authorization);
+    if (!user)
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.UNAUTHORIZED, 'You are not authorized.');
+    if (![user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role)) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.FORBIDDEN, 'You do not have permission to manage maps.');
+    }
+    const query = { ...req.query };
+    if (user.role === user_1.USER_ROLES.MAP_EDITOR) {
+        const countries = (user.assignedCountries || []).filter(country => country.trim()).map(country => new RegExp('^' + country.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'));
+        const assigned = await map_model_1.Map.find({ $or: [
+                { _id: { $in: user.assignedMaps || [] } },
+                { country: { $in: countries } },
+                { 'name.en': { $in: countries } },
+                { 'name.es': { $in: countries } },
+                { name: { $in: countries } },
+            ] }).select('_id').lean();
+        query._id = { $in: assigned.map(map => map._id) };
+    }
+    const result = await map_service_1.MapService.getAllMaps(query);
+    (0, sendResponse_1.default)(res, {
+        statusCode: http_status_codes_1.StatusCodes.OK, success: true, message: 'Managed maps retrieved successfully',
+        meta: result.meta, data: (0, localize_1.localizeDocument)(result.data, req.lang, mapFields),
+    });
+});
 const getAllMaps = (0, catchAsync_1.default)(async (req, res) => {
     const authorizationHeader = req.headers.authorization;
     const user = await (0, mapAccessHelper_1.getUserFromToken)(authorizationHeader);
     const accessibleMapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
-    const isAdmin = user && (user.role === user_1.USER_ROLES.ADMIN || user.role === user_1.USER_ROLES.SUPER_ADMIN);
+    const isAdminOrEditor = !!(user &&
+        [user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role));
     const query = { ...req.query };
-    if (!isAdmin) {
+    if (!isAdminOrEditor) {
         query.isActive = 'true';
+        query.status = 'Published';
     }
     const result = await map_service_1.MapService.getAllMaps(query);
     // Tag each map with isLocked (places are NOT populated in list view for performance)
@@ -54,6 +81,11 @@ const getMapById = (0, catchAsync_1.default)(async (req, res) => {
     const accessibleMapIds = await (0, mapAccessHelper_1.getAccessibleMapIds)(user);
     const result = await map_service_1.MapService.getMapById(req.params.id);
     if (!result) {
+        throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Map not found');
+    }
+    const isAdminOrEditor = !!(user &&
+        [user_1.USER_ROLES.ADMIN, user_1.USER_ROLES.SUPER_ADMIN, user_1.USER_ROLES.MAP_EDITOR].includes(user.role));
+    if (!isAdminOrEditor && (result.status === 'Draft' || result.isActive === false)) {
         throw new ApiError_1.default(http_status_codes_1.StatusCodes.NOT_FOUND, 'Map not found');
     }
     const mapObj = typeof result.toObject === 'function'
@@ -134,38 +166,37 @@ const getDiscoveryData = (0, catchAsync_1.default)(async (req, res) => {
     // Run accessible map IDs, paid maps lookup, and target map lookup in parallel
     const [accessibleMapIds, paidMaps, targetMap] = await Promise.all([
         (0, mapAccessHelper_1.getAccessibleMapIds)(user),
-        map_model_1.Map.find({ isPaid: true }, '_id'),
+        map_model_1.Map.find((user === null || user === void 0 ? void 0 : user.role) === user_1.USER_ROLES.MAP_EDITOR ? {} : { isPaid: true }, '_id'),
         mapIdParam ? map_model_1.Map.findById(mapIdParam).select('name country').lean() : null,
     ]);
     const paidMapIds = paidMaps.map(m => m._id.toString());
     const lockedMapIds = paidMapIds.filter(id => !accessibleMapIds.includes(id));
     const isAdminOrEditor = !!(user && (user.role === 'super_admin' || user.role === 'admin' || user.role === 'map_editor'));
-    const result = await map_service_1.MapService.getDiscoveryData(req.query, lockedMapIds, isAdminOrEditor, targetMap);
+    const result = await map_service_1.MapService.getDiscoveryData(req.query, lockedMapIds, isAdminOrEditor, targetMap, (user === null || user === void 0 ? void 0 : user.role) === user_1.USER_ROLES.MAP_EDITOR ? accessibleMapIds : undefined);
     const visitedSet = new Set(((user === null || user === void 0 ? void 0 : user.visitedPlaces) || []).map((id) => id.toString()));
     const isGuest = !user;
     const now = Date.now();
     const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
-    const itemsWithVisited = Array.isArray(result)
-        ? result.map((item) => {
-            var _a;
-            const isNewlyAdded = Boolean(item.createdAt && (now - new Date(item.createdAt).getTime() <= sixtyDaysMs));
-            const isLocked = Boolean(item.isLocked);
-            // For users without an account, hide the name of newly added locked locations (Issue 2)
-            let maskedName = item.name;
-            if (isGuest && isNewlyAdded && isLocked) {
-                maskedName = {
-                    en: 'A location was added to the map...',
-                    es: 'Se agregó una ubicación al mapa...',
-                };
-            }
-            return {
-                ...item,
-                name: maskedName,
-                isNewlyAdded,
-                isVisited: visitedSet.has((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()),
+    const enrichItem = (item) => {
+        var _a;
+        const isNewlyAdded = Boolean(item.createdAt && (now - new Date(item.createdAt).getTime() <= sixtyDaysMs));
+        const isLocked = Boolean(item.isLocked);
+        // For users without an account, hide the name of newly added locked locations.
+        let maskedName = item.name;
+        if (isGuest && isNewlyAdded && isLocked) {
+            maskedName = {
+                en: 'A location was added to the map...',
+                es: 'Se agregó una ubicación al mapa...',
             };
-        })
-        : result;
+        }
+        return {
+            ...item,
+            name: maskedName,
+            isNewlyAdded,
+            isVisited: visitedSet.has((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()),
+        };
+    };
+    const itemsWithVisited = { ...result, data: result.data.map(enrichItem) };
     const discoveryFields = ['name', 'description', 'access', 'entryCost', 'hikeTime', 'atmosphere', 'accessibility.notes', 'recommendations.tips', 'category.name'];
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_codes_1.StatusCodes.OK,
@@ -175,6 +206,7 @@ const getDiscoveryData = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 exports.MapController = {
+    getManagedMaps,
     createMap,
     getAllMaps,
     getMapById,
