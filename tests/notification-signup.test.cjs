@@ -6,9 +6,9 @@ const vm = require('node:vm')
 const ts = require('typescript')
 const mongoose = require('mongoose')
 
-function load(file, imports = {}) {
+function load(file, imports = {}, source) {
   const exports = {}
-  const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
+  const code = ts.transpileModule(source || fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
   }).outputText
   vm.runInNewContext(code, { exports, require: name => imports[name] || {}, console, global: {} })
@@ -38,10 +38,10 @@ function matches(row, query) {
     return values.some(item => same(item, condition))
   })
 }
-function fixture() {
+function fixture(options = {}) {
   const defaults = { type: 'NEW_MAP', category: 'roadtripeado', isRead: false, isArchived: false, readBy: [], archivedBy: [] }
   const before = new Date(user.createdAt.getTime() - 1)
-  const rows = [
+  const rows = (options.rows || [
     { _id: 'old-broadcast', targetAudience: 'all_user', createdAt: before },
     { _id: 'old-interest', interests: ['hiking'], createdAt: before },
     { _id: 'new-broadcast', targetAudience: 'active_user', createdAt: user.createdAt },
@@ -49,8 +49,9 @@ function fixture() {
     { _id: 'personal', userId: user._id, createdAt: before, category: 'account' },
     { _id: 'other-user', userId: new mongoose.Types.ObjectId(), targetAudience: 'all_user', createdAt: user.createdAt },
     { _id: 'unrelated', interests: ['surfing'], createdAt: user.createdAt },
-  ].map(row => ({ ...defaults, ...row }))
+  ]).map(row => ({ ...defaults, ...row }))
   const updates = []
+  const calls = { count: 0, aggregate: 0 }
   const chain = result => {
     const query = { lean: async () => result }
     for (const method of ['select', 'skip', 'limit', 'sort', 'populate']) query[method] = () => query
@@ -58,8 +59,25 @@ function fixture() {
   }
   const Notification = {
     find: query => chain(rows.filter(row => matches(row, query))),
-    countDocuments: async query => rows.filter(row => matches(row, query)).length,
-    aggregate: async () => [],
+    countDocuments: async query => { calls.count++; return rows.filter(row => matches(row, query)).length },
+    aggregate: async pipeline => {
+      calls.aggregate++
+      const group = pipeline.find(stage => stage.$group)?.$group
+      if (!group) return []
+      const valueOf = (expr, row) => {
+        if (typeof expr === 'string' && expr.startsWith('$')) return row[expr.slice(1)] ?? null
+        if (expr?.$ifNull) return expr.$ifNull.map(item => valueOf(item, row)).find(item => item != null) ?? null
+        if (expr && typeof expr === 'object') return Object.fromEntries(Object.entries(expr).map(([key, value]) => [key, valueOf(value, row)]))
+        return expr
+      }
+      const groups = new Map()
+      for (const row of rows.filter(row => matches(row, pipeline[0].$match))) {
+        const id = valueOf(group._id, row), key = JSON.stringify(id)
+        if (!groups.has(key)) groups.set(key, { _id: id, count: 0 })
+        groups.get(key).count++
+      }
+      return [...groups.values()]
+    },
     updateMany: async (query, update) => {
       const selected = rows.filter(row => matches(row, query))
       updates.push(...selected.map(row => row._id))
@@ -74,8 +92,8 @@ function fixture() {
     'http-status-codes': { StatusCodes: {} },
     '../../errors/ApiError': class extends Error {},
     '../../helpers/paginationHelper': { paginationHelper: { calculatePagination: () => ({ page: 1, skip: 0, limit: 20, sortBy: 'createdAt', sortOrder: 'desc' }) } },
-  })
-  return { service, updates }
+  }, options.reference ? require('node:child_process').execFileSync('git', ['show', 'HEAD:src/modules/notification/notification.service.ts'], { cwd: path.resolve(__dirname, '..'), encoding: 'utf8', windowsHide: true }) : undefined)
+  return { service, updates, rows, calls }
 }
 
 test('new user lists exclude broadcasts before signup, retaining personal and matching new notifications', async () => {
@@ -110,4 +128,45 @@ test('admin global history remains available', async () => {
   const { service } = fixture()
   const result = await service.getAllNotifications({ ...identity, role: 'admin' }, {}, {})
   assert.equal(result.meta.total, 7)
+})
+
+test('optimized unread response equals the baseline while replacing four notification queries with one', async () => {
+  const current = fixture(), previous = fixture({ reference: true })
+  assert.deepEqual(JSON.parse(JSON.stringify(await current.service.getUnreadCount(userId))), JSON.parse(JSON.stringify(await previous.service.getUnreadCount(userId))))
+  assert.deepEqual(current.calls, { count: 0, aggregate: 1 })
+  assert.deepEqual(previous.calls, { count: 3, aggregate: 1 })
+})
+
+test('single unread aggregation preserves read/archive, legacy category/type and audience semantics', async () => {
+  const rows = [
+    { userId: user._id, category: 'account', type: 'A' },
+    { userId: user._id, category: 'roadtripeado', type: 'A' },
+    { userId: user._id, category: undefined, type: 'A' },
+    { userId: user._id, category: null, type: null },
+    { userId: user._id, type: undefined },
+    { userId: user._id, isRead: true },
+    { userId: user._id, isArchived: true },
+    { targetAudience: 'all_user', createdAt: user.createdAt },
+    { targetAudience: 'all_user', createdAt: user.createdAt, readBy: [user._id] },
+    { targetAudience: 'all_user', createdAt: user.createdAt, archivedBy: [user._id] },
+    { targetAudience: 'all_user', createdAt: new Date(0) },
+    { userId: new mongoose.Types.ObjectId(), createdAt: user.createdAt },
+  ]
+  const a = fixture({ rows }), b = fixture({ rows, reference: true })
+  const current = JSON.parse(JSON.stringify(await a.service.getUnreadCount(userId)))
+  assert.deepEqual(current, JSON.parse(JSON.stringify(await b.service.getUnreadCount(userId))))
+  assert.equal(current.totalUnread, 6)
+  assert.equal(current.byType.A, 3)
+  assert.equal(current.byType.null, 2)
+  assert.deepEqual(JSON.parse(JSON.stringify(await fixture({ rows: [] }).service.getUnreadCount(userId))), { totalUnread: 0, unreadAccount: 0, unreadRoadtripeado: 0, byType: {} })
+})
+
+test('legacy array-valued categories retain the baseline category match semantics', async () => {
+  const rows = [
+    { userId: user._id, category: ['account', 'roadtripeado'], type: 'NEW_MAP' },
+    { userId: user._id, category: ['account'], type: 'NEW_OFFER' },
+    { userId: user._id, category: 'account', type: 'NEW_MAP' },
+  ]
+  const current = fixture({ rows }), previous = fixture({ rows, reference: true })
+  assert.deepEqual(JSON.parse(JSON.stringify(await current.service.getUnreadCount(userId))), JSON.parse(JSON.stringify(await previous.service.getUnreadCount(userId))))
 })

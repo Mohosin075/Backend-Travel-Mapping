@@ -389,7 +389,13 @@ const getDiscoveryData = async (
   })
 
   // Deduplicate and combine results (Issue 6: Prevent duplicate location records like Bai Picnic)
+  // Request-local memoization preserves the existing matching/order rules while
+  // avoiding repeated Unicode normalization inside the place/business loops.
+  const normalizedNames = new WeakMap<object, string[]>()
+  const coordinateKeys = new WeakMap<object, string | null>()
   const getAllNormalizedNames = (item: any): string[] => {
+    const cached = normalizedNames.get(item)
+    if (cached) return cached
     const names: string[] = []
     const norm = (s: any) =>
       String(s || '')
@@ -407,10 +413,13 @@ const getDiscoveryData = async (
         if (typeof val === 'string') names.push(norm(val))
       }
     }
-    return Array.from(new Set(names.filter(Boolean)))
+    const result = Array.from(new Set(names.filter(Boolean)))
+    normalizedNames.set(item, result)
+    return result
   }
 
   const getCoordsKey = (item: any): string | null => {
+    if (coordinateKeys.has(item)) return coordinateKeys.get(item)!
     const coords =
       item?.location?.coordinates ||
       item?.location?.mapLocation?.coordinates ||
@@ -419,9 +428,12 @@ const getDiscoveryData = async (
       const lng = Number(coords[0])
       const lat = Number(coords[1])
       if (Number.isFinite(lng) && Number.isFinite(lat)) {
-        return `${lng.toFixed(4)},${lat.toFixed(4)}`
+        const key = `${lng.toFixed(4)},${lat.toFixed(4)}`
+        coordinateKeys.set(item, key)
+        return key
       }
     }
+    coordinateKeys.set(item, null)
     return null
   }
 

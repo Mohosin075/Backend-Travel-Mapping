@@ -11,9 +11,9 @@
   "type": "commonjs",
   "main": "src/server.ts",
   "scripts": {
-    "build": "tsc",
-    "start": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "start:prod": "node dist/server.js",
+    "build": "node init && tsc",
+    "start": "node init && ts-node-dev --respawn --transpile-only src/server.ts",
+    "start:prod": "node init && node dist/server.js",
     "backfill:translations": "ts-node src/scripts/backfillTranslations.ts",
     "lint:check": "eslint .",
     "lint:fix": "eslint . --fix",
