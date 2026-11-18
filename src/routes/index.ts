@@ -24,9 +24,11 @@ import { StatusCodes } from 'http-status-codes'
 import { PaymentRoutes } from '../modules/payment/payment.route'
 import { PromoLinkRoutes } from '../modules/promo/promo.route'
 import { RoutePlanRoutes } from '../modules/route-plan/route-plan.route'
+import { clientErrorRateLimiter, reportClientError } from '../modules/auth/client-error-report'
 
 
 const router = express.Router()
+router.post('/client-errors', clientErrorRateLimiter, reportClientError)
 
 const apiRoutes: { path: string; route: Router }[] = [
   { path: '/user', route: UserRoutes },

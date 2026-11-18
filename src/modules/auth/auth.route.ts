@@ -9,6 +9,8 @@ import auth from '../../middleware/auth'
 import {
   authRateLimiter,
   otpRateLimiter,
+  otpIpRateLimiter,
+  otpSendRateLimiter,
   passwordRateLimiter,
   refreshTokenRateLimiter,
 } from '../../middleware/rateLimit'
@@ -53,6 +55,7 @@ router.get(
 
 router.post(
   '/verify-account',
+  otpIpRateLimiter,
   otpRateLimiter,
   validateRequest(AuthValidations.verifyAccountZodSchema),
   CustomAuthController.verifyAccount,
@@ -67,7 +70,8 @@ router.post(
 
 router.post(
   '/forget-password',
-  otpRateLimiter,
+  otpIpRateLimiter,
+  otpSendRateLimiter,
   validateRequest(AuthValidations.forgetPasswordZodSchema),
   CustomAuthController.forgetPassword,
 )
@@ -80,7 +84,8 @@ router.post(
 
 router.post(
   '/resend-otp',
-  otpRateLimiter,
+  otpIpRateLimiter,
+  otpSendRateLimiter,
   validateRequest(AuthValidations.resendOtpZodSchema),
   CustomAuthController.resendOtp,
 )

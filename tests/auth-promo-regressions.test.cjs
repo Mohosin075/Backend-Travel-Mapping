@@ -317,6 +317,7 @@ function authFixture(options = {}) {
     '../../shared/emailTemplate': { emailTemplate: templates }, '../../helpers/emailHelper': { emailHelper: email },
   });
   const custom = loadAuth('src/modules/auth/custom.auth/custom.auth.service.ts', {
+    '../otp-request-count': load('src/modules/auth/otp-request-count.ts', {}),
     '../../../enum/user': enums, '../../user/user.model': { User: userModel }, '../auth.helper': { AuthHelper: helpers },
     '../../../errors/ApiError': ApiError, '../../../config': { bcrypt_salt_rounds: '10', jwt: { jwt_refresh_secret: 'test' } },
     '../common': { authResponse: response, AuthCommonServices: common.AuthCommonServices },
@@ -333,6 +334,24 @@ function authFixture(options = {}) {
   }).CustomAuthServices;
   return { state, service: custom, common: common.AuthCommonServices };
 }
+test('an unverified account can resend after its old five-request budget expires', async () => {
+  const f = authFixture();
+  Object.assign(f.state.user.authentication, { requestCount: 5, latestRequestAt: new Date(Date.now() - 900001) });
+  await f.service.resendOtp(f.state.user.email, 'createAccount');
+  assert.equal(f.state.user.authentication.requestCount, 1);
+  assert.equal(f.state.emails.length, 1);
+  assert.equal((await f.service.verifyAccount(f.state.user.email, '654321')).accessToken, 'access');
+  assert.equal(f.state.user.verified, true);
+});
+
+test('recent resend budget returns a timed 429 without replacing the current code', async () => {
+  const f = authFixture();
+  Object.assign(f.state.user.authentication, { requestCount: 5, latestRequestAt: new Date() });
+  await assert.rejects(f.service.resendOtp(f.state.user.email, 'createAccount'), error => error.statusCode === 429 && error.retryAfter > 0);
+  assert.equal(f.state.user.authentication.oneTimeCode, '123456');
+  assert.equal(f.state.emails.length, 0);
+});
+
 test('ordinary signup OTP logs in once; replay cannot mint a password-reset token', async () => {
   const f = authFixture();
   assert.equal((await f.service.verifyAccount('buyer@example.test', '123456')).accessToken, 'access');

@@ -1,5 +1,6 @@
 class ApiError extends Error {
   statusCode: number
+  retryAfter?: number
 
   constructor(statusCode: number, message: string | undefined, stack = '') {
     super(message)

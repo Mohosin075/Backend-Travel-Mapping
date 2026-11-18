@@ -107,6 +107,7 @@ function ui(file, options = {}) {
     (name === '@/hooks/use-map-purchase' ? execute('hooks/use-map-purchase.ts') :
       /ui\/(button|input|label|checkbox)/.test(name) ? { Button: 'button', Input: 'input', Label: 'label', Checkbox: 'checkbox' } : name === 'zod' ? require('zod') : {}),
     console, URLSearchParams, process: { env: {} }, crypto: crypto.webcrypto, localStorage: storageApi, sessionStorage: storageApi,
+    Date: options.clock ? class extends Date { static now() { return options.clock.now; } } : Date,
     window: { innerWidth: 1200, addEventListener() {}, removeEventListener() {}, location: { origin: 'https://example.test', pathname: `/catalog/${mapId}`, search: '', assign: path => routes.push(path), set href(path) { routes.push(path); } } }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
   };
   const execute = relativeFile => {
@@ -131,6 +132,74 @@ function ui(file, options = {}) {
   } };
 }
 const find = (tree, type) => nodes(tree).find(node => node.type === type);
+
+test('OTP rate limit stays on verification, shows the error, and blocks requests during cooldown', async () => {
+  const clock = { now: Date.now() };
+  const f = ui('components/auth/otp-verify-form.tsx', {
+    clock,
+    params: { email: 'buyer@example.test', redirect: '/claim-promo?code=PROMO' },
+    errors: { useVerifyAccountMutation: { status: 429, data: { message: 'Too many requests', retryAfter: 30 } } },
+  });
+  find(f.render(), 'input').props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '123456' } });
+  await find(f.render(), 'button').props.onClick();
+  assert.equal(find(f.render(), 'button').props.disabled, true);
+  assert.equal(nodes(f.render()).find(n => n.props?.role === 'alert').props.children, 'Too many requests');
+  await find(f.render(), 'button').props.onClick();
+  assert.equal(f.calls.useVerifyAccountMutation.length, 1);
+  assert.equal(f.routes.length + f.actions.length, 0);
+  assert.equal(f.params.get('redirect'), '/claim-promo?code=PROMO');
+  clock.now += 30_000;
+  f.render(); await f.effects(); f.timers();
+  assert.equal(find(f.render(), 'button').props.disabled, false);
+});
+
+test('rapid OTP submits and resend clicks share a synchronous in-flight guard', async () => {
+  let complete;
+  const pending = new Promise(resolve => { complete = resolve; });
+  const f = ui('components/auth/otp-verify-form.tsx', {
+    params: { email: 'buyer@example.test' },
+    mutationWait: { useVerifyAccountMutation: pending },
+    responses: { useVerifyAccountMutation: { success: true, data: { accessToken: 'token' } } },
+  });
+  find(f.render(), 'input').props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '123456' } });
+  const button = find(f.render(), 'button');
+  const first = button.props.onClick();
+  await button.props.onClick();
+  assert.equal(f.calls.useVerifyAccountMutation.length, 1);
+  complete(); await first;
+  assert.equal(f.actions.filter(action => action.type === 'setUser').length, 1);
+});
+
+test('resend cooldown expires by wall time after the browser was in the background', async () => {
+  const clock = { now: Date.now() };
+  const f = ui('components/auth/otp-verify-form.tsx', {
+    clock, params: { email: 'buyer@example.test' },
+    responses: { useResendOtpMutation: { success: true } },
+  });
+  f.render(); await f.effects();
+  clock.now += 20 * 60_000;
+  f.timers();
+  const resend = nodes(f.render()).filter(n => n.type === 'button').at(-1);
+  await resend.props.onClick();
+  assert.equal(f.calls.useResendOtpMutation.length, 1);
+});
+
+test('expired OTP immediately offers resend without leaving the promo verification flow', async () => {
+  const f = ui('components/auth/otp-verify-form.tsx', {
+    params: { email: 'buyer@example.test', redirect: '/claim-promo?code=PROMO' },
+    errors: { useVerifyAccountMutation: { status: 400, data: { message: 'OTP has expired, please try again.' } } },
+    responses: { useResendOtpMutation: { success: true } },
+  });
+  find(f.render(), 'input').props.onPaste({ preventDefault() {}, clipboardData: { getData: () => '123456' } });
+  await find(f.render(), 'button').props.onClick();
+  const resend = nodes(f.render()).filter(n => n.type === 'button').at(-1);
+  assert.equal(resend.props.disabled, false);
+  await resend.props.onClick();
+  assert.equal(f.calls.useResendOtpMutation.length, 1);
+  assert.equal(nodes(f.render()).some(n => n.props?.role === 'alert'), false);
+  assert.equal(f.params.get('redirect'), '/claim-promo?code=PROMO');
+  assert.equal(f.routes.length, 0);
+});
 
 for (const target of [mapId, 'New Map', 'Missing Map']) {
   test(`View-on-map target ${target} never loads the previously owned map while checking access`, async () => {

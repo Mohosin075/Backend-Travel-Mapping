@@ -65,8 +65,12 @@ const globalErrorHandler: ErrorRequestHandler = (
     message: translateMessage(err.message, lang),
   }))
 
+  const retryAfter = error instanceof ApiError && Number.isFinite(error.retryAfter)
+    ? Math.max(1, Math.ceil(error.retryAfter!)) : undefined
+  if (retryAfter) res.setHeader('Retry-After', String(retryAfter))
   res.status(statusCode).json({
     success: false,
+    ...(retryAfter ? { retryAfter } : {}),
     message: localizedMessage,
     errorMessages: localizedErrorMessages,
     stack: config.node_env === 'production' || error?.code === 11000 ? undefined : error?.stack,

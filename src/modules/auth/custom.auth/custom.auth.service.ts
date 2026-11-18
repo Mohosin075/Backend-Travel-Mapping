@@ -15,6 +15,7 @@ import { jwtHelper } from '../../../helpers/jwtHelper'
 import { JwtPayload } from 'jsonwebtoken'
 import { IUser } from '../../user/user.interface'
 import { emailHelper } from '../../../helpers/emailHelper'
+import { getOtpRequestCount, getOtpRetryAfter } from '../otp-request-count'
 // import { emailQueue } from '../../../helpers/bull-mq-producer'
 
 const createUser = async (payload: IUser) => {
@@ -594,17 +595,18 @@ const resendOtpToPhoneOrEmail = async (
 
   //check the request count
   const { authentication } = isUserExist
-  if (authentication?.requestCount! >= 5) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
+  const requestCount = getOtpRequestCount(authentication)
+  if (requestCount >= 5) {
+    throw Object.assign(new ApiError(
+      StatusCodes.TOO_MANY_REQUESTS,
       'You have exceeded the maximum number of requests. Please try again later.',
-    )
+    ), { retryAfter: getOtpRetryAfter(authentication) })
   }
   const otp = generateOtp()
   const updatedAuthentication = {
     oneTimeCode: otp,
     latestRequestAt: new Date(),
-    requestCount: authentication?.requestCount! + 1,
+    requestCount: requestCount + 1,
     expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
   }
 
@@ -697,13 +699,13 @@ const resendOtp = async (
   }
 
   const { authentication } = isUserExist
-  const nextRequestCount = (authentication?.requestCount || 0) + 1
+  const nextRequestCount = getOtpRequestCount(authentication) + 1
 
   if (nextRequestCount > 5) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
+    throw Object.assign(new ApiError(
+      StatusCodes.TOO_MANY_REQUESTS,
       'You have exceeded the maximum number of requests. Please try again later.',
-    )
+    ), { retryAfter: getOtpRetryAfter(authentication) })
   }
 
   // Invited users (unverified, no password) keep the longer invite window
