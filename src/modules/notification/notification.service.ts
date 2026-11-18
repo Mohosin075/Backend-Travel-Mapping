@@ -644,28 +644,34 @@ const getUnreadCount = async (userId: string): Promise<IUnreadCountResponse> => 
     ],
   }
 
-  const [totalUnread, unreadAccount, unreadRoadtripeado, byTypeDocs] =
-    await Promise.all([
-      Notification.countDocuments(unreadBaseQuery),
-      Notification.countDocuments({
-        $and: [unreadBaseQuery, { category: NotificationCategory.ACCOUNT }],
-      }),
-      Notification.countDocuments({
-        $and: [
-          unreadBaseQuery,
-          { category: NotificationCategory.ROADTRIPEADO },
-        ],
-      }),
-      Notification.aggregate([
-        { $match: unreadBaseQuery },
-        { $group: { _id: '$type', count: { $sum: 1 } } },
-      ]),
-    ])
-
+  // Match the audience once instead of scanning it for three counters and types.
+  // Include legacy documents without a category in the total and type counts.
+  const groups = await Notification.aggregate([
+    { $match: unreadBaseQuery },
+    { $group: {
+      _id: {
+        category: { $ifNull: ['$category', null] },
+        type: { $ifNull: ['$type', null] },
+      },
+      count: { $sum: 1 },
+    } },
+  ])
+  let totalUnread = 0
+  let unreadAccount = 0
+  let unreadRoadtripeado = 0
   const byType: Record<string, number> = {}
-  byTypeDocs.forEach(item => {
-    byType[item._id] = item.count
-  })
+  for (const group of groups) {
+    totalUnread += group.count
+    // MongoDB's original category equality query also matched array elements.
+    const categories = Array.isArray(group._id.category) ? group._id.category : [group._id.category]
+    if (categories.includes(NotificationCategory.ACCOUNT)) unreadAccount += group.count
+    if (categories.includes(NotificationCategory.ROADTRIPEADO)) unreadRoadtripeado += group.count
+    const type = String(group._id.type)
+    Object.defineProperty(byType, type, {
+      value: (Object.prototype.hasOwnProperty.call(byType, type) ? byType[type] : 0) + group.count,
+      enumerable: true, configurable: true, writable: true,
+    })
+  }
 
   return {
     totalUnread,

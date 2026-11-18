@@ -5,10 +5,13 @@ const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
+const frontendRoot = process.env.GIOVAFILM_FRONTEND_DIR || path.resolve(root, '../giovafilm_mapping')
 
 function load(file, imports = {}, extras = {}, append = '') {
   const exports = {}
-  const source = fs.readFileSync(path.join(root, file), 'utf8') + append
+  const legacyPrefix = '../frontend_giovafilm_roadtripeado/'
+  const target = file.startsWith(legacyPrefix) ? path.join(frontendRoot, file.slice(legacyPrefix.length)) : path.join(root, file)
+  const source = fs.readFileSync(target, 'utf8') + append
   vm.runInNewContext(ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, { exports, require: name => imports[name] || {}, console, ...extras })
@@ -173,13 +176,14 @@ function cameraHarness() {
   const exported = load('../frontend_giovafilm_roadtripeado/components/Common/maps/map.tsx', {
     react: { useEffect: fn => { effect = fn }, useRef: value => refs[refIndex++] ||= { current: value } },
     '@vis.gl/react-google-maps': { useMap: () => map, useMapsLibrary: () => library },
+    '@/lib/maps/geocode': load('../frontend_giovafilm_roadtripeado/lib/maps/geocode.ts', { './cost-diagnostics': { countMapCost() {} } }),
   }, {}, '\nexports.CountryPanner = CountryPanner; exports.SearchPanner = SearchPanner;')
   return { calls, callbacks, setLibrary: () => { library = { Geocoder: class { geocode(_req, callback) { callbacks.push(callback) } } } },
     render: (component, props) => { refIndex = 0; exported[component](props); return effect() },
   }
 }
 
-test('selected country waits for geocoder library and ignores old country callbacks', () => {
+test('selected country waits for geocoder library and ignores old country callbacks', async () => {
   const h = cameraHarness()
   h.render('CountryPanner', { selectedCountry: 'New Country' })
   h.setLibrary()
@@ -188,8 +192,10 @@ test('selected country waits for geocoder library and ignores old country callba
   cleanup()
   h.render('CountryPanner', { selectedCountry: 'Another Country' })
   h.callbacks[0]([{ geometry: { location: 'old' } }], 'OK')
+  await new Promise(resolve => setImmediate(resolve))
   assert.equal(h.calls.length, 0)
   h.callbacks[1]([{ geometry: { location: 'new' } }], 'OK')
+  await new Promise(resolve => setImmediate(resolve))
   assert.equal(h.calls[0][1], 'new')
 })
 
